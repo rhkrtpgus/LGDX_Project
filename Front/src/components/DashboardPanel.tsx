@@ -18,14 +18,13 @@ export function DashboardPanel({ onStatusChange }: DashboardPanelProps) {
           return
         }
         setOverview(data)
-        setError(null)
-        onStatusChange?.('대시보드 데이터를 불러왔습니다.')
+        onStatusChange?.('TV 핵심 요약 정보를 불러왔습니다.')
       })
       .catch(() => {
         if (cancelled) {
           return
         }
-        setError('백엔드 대시보드 API 연결이 필요합니다.')
+        setError('홈 요약 정보를 불러오지 못했습니다.')
       })
 
     return () => {
@@ -36,11 +35,9 @@ export function DashboardPanel({ onStatusChange }: DashboardPanelProps) {
   return (
     <section className="service-panel">
       <div className="service-panel__header">
-        <span className="section-heading__eyebrow">실시간 백엔드 연동</span>
-        <h2>가족 보호 대시보드</h2>
-        <p>
-          PostgreSQL에 저장된 집계와 최근 경고 이력을 백엔드 API에서 바로 불러옵니다.
-        </p>
+        <span className="section-heading__eyebrow">TV 핵심 기능</span>
+        <h2>큰 화면에서는 꼭 필요한 기능만</h2>
+        <p>유튜브 실행, 재생 전 분석, 위험 콘텐츠 차단, 개인정보 동의만 TV에서 처리합니다.</p>
       </div>
 
       {error ? <p className="service-panel__error">{error}</p> : null}
@@ -49,7 +46,7 @@ export function DashboardPanel({ onStatusChange }: DashboardPanelProps) {
         <>
           <div className="dashboard-grid">
             <div>
-              <span>사용자 수</span>
+              <span>연결된 가족</span>
               <strong>{overview.userCount}</strong>
             </div>
             <div>
@@ -57,28 +54,33 @@ export function DashboardPanel({ onStatusChange }: DashboardPanelProps) {
               <strong>{overview.childCount}</strong>
             </div>
             <div>
-              <span>시청 기록</span>
+              <span>누적 분석</span>
               <strong>{overview.viewingCount}</strong>
             </div>
             <div>
-              <span>경고 로그</span>
+              <span>누적 경고</span>
               <strong>{overview.alertCount}</strong>
             </div>
           </div>
 
-          <div className="dashboard-alerts">
-            {overview.recentAlerts.map((alert) => (
-              <article key={alert.alertId} className="dashboard-alerts__item">
-                <div>
-                  <span>{alert.alertType}</span>
-                  <strong>{alert.videoId}</strong>
-                </div>
-                <p>{alert.messageText}</p>
-                <small>
-                  위험도 {alert.riskLevel} · {new Date(alert.watchTime).toLocaleString('ko-KR')}
-                </small>
-              </article>
-            ))}
+          <div className="minimal-core-grid">
+            <article className="minimal-core-card">
+              <strong>유튜브 재생</strong>
+              <p>앱 실행 또는 분석 결과에서 바로 YouTube로 이동합니다.</p>
+            </article>
+            <article className="minimal-core-card">
+              <strong>AI 사전 분석</strong>
+              <p>재생 전에 콘텐츠 유형, 유해 신호, 시청 규칙을 먼저 확인합니다.</p>
+            </article>
+            <article className="minimal-core-card">
+              <strong>자동 차단</strong>
+              <p>유해 콘텐츠 또는 시청 제한 조건이면 TV에서 바로 재생을 막습니다.</p>
+            </article>
+          </div>
+
+          <div className="minimal-mobile-note">
+            <strong>리포트와 상세 시청 기록은 모바일 전용</strong>
+            <p>보호자 리포트, 주간 통계, 상세 기록 관리는 모바일 앱에서 확인하도록 분리했습니다.</p>
           </div>
         </>
       ) : null}

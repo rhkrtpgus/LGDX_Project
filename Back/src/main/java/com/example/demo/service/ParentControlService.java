@@ -1,0 +1,386 @@
+package com.example.demo.service;
+
+import com.example.demo.domain.AlertLogRecord;
+import com.example.demo.domain.ChildProfile;
+import com.example.demo.domain.ChildWatchPolicyRecord;
+import com.example.demo.domain.ViewingHistoryWriteRecord;
+import com.example.demo.dto.ChildWatchPolicyRequest;
+import com.example.demo.dto.ChildWatchPolicyResponse;
+import com.example.demo.dto.MobileReportResponse;
+import com.example.demo.dto.ParentAlertResponse;
+import com.example.demo.dto.ParentChildResponse;
+import com.example.demo.dto.ParentOverviewResponse;
+import com.example.demo.dto.ParentViewingHistoryResponse;
+import com.example.demo.dto.PlaybackDecisionResult;
+import com.example.demo.repository.ParentControlMapper;
+import java.time.DayOfWeek;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+@Service
+public class ParentControlService {
+
+	private final ParentControlMapper parentControlMapper;
+	private final MobileReportService mobileReportService;
+
+	public ParentControlService(
+		ParentControlMapper parentControlMapper,
+		MobileReportService mobileReportService
+	) {
+		this.parentControlMapper = parentControlMapper;
+		this.mobileReportService = mobileReportService;
+	}
+
+	public ParentOverviewResponse getOverview(int familyId) {
+		String familyName = parentControlMapper.findFamilyNameById(familyId);
+		if (!StringUtils.hasText(familyName)) {
+			throw new IllegalArgumentException("가족 정보를 찾을 수 없습니다.");
+		}
+
+		List<ParentChildResponse> children = parentControlMapper.findChildrenByFamilyId(familyId)
+			.stream()
+			.map(this::toChildResponse)
+			.toList();
+		MobileReportResponse report = mobileReportService.getMobileReport(familyId);
+
+		return new ParentOverviewResponse(
+			familyId,
+			familyName,
+			parentControlMapper.countTodayViewingsByFamilyId(familyId),
+			parentControlMapper.countAlertsByFamilyId(familyId),
+			children,
+			report,
+			parentControlMapper.findAlertsByFamilyId(familyId, 5)
+		);
+	}
+
+	public List<ParentChildResponse> getChildren(int familyId) {
+		return parentControlMapper.findChildrenByFamilyId(familyId).stream()
+			.map(this::toChildResponse)
+			.toList();
+	}
+
+	public ChildProfile getChildProfile(int childId) {
+		return parentControlMapper.findChildById(childId);
+	}
+
+	public ChildWatchPolicyResponse getWatchPolicy(int childId) {
+		ChildProfile child = getRequiredChild(childId);
+		return toPolicyResponse(resolvePolicy(child.childId()));
+	}
+
+	public ChildWatchPolicyResponse updateWatchPolicy(ChildWatchPolicyRequest request) {
+		if (request.childId() == null) {
+			throw new IllegalArgumentException("childId는 필수입니다.");
+		}
+
+		ChildProfile child = getRequiredChild(request.childId());
+		ChildWatchPolicyRecord current = resolvePolicy(child.childId());
+
+		ChildWatchPolicyRecord next = new ChildWatchPolicyRecord();
+		next.setChildId(child.childId());
+		next.setDailyLimitMinutes(
+			request.dailyLimitMinutes() != null ? request.dailyLimitMinutes() : current.getDailyLimitMinutes()
+		);
+		next.setWeekdayStartHour(
+			request.weekdayStartHour() != null ? request.weekdayStartHour() : current.getWeekdayStartHour()
+		);
+		next.setWeekdayEndHour(
+			request.weekdayEndHour() != null ? request.weekdayEndHour() : current.getWeekdayEndHour()
+		);
+		next.setWeekendStartHour(
+			request.weekendStartHour() != null ? request.weekendStartHour() : current.getWeekendStartHour()
+		);
+		next.setWeekendEndHour(
+			request.weekendEndHour() != null ? request.weekendEndHour() : current.getWeekendEndHour()
+		);
+		next.setNotificationThreshold(
+			request.notificationThreshold() != null
+				? request.notificationThreshold()
+				: current.getNotificationThreshold()
+		);
+		next.setAutoBlockEnabled(
+			request.autoBlockEnabled() != null ? request.autoBlockEnabled() : current.getAutoBlockEnabled()
+		);
+
+		validatePolicy(next);
+		parentControlMapper.upsertWatchPolicy(next);
+		return getWatchPolicy(child.childId());
+	}
+
+	public List<ParentViewingHistoryResponse> getViewingHistory(
+		int familyId,
+		Integer childId,
+		int limit
+	) {
+		return parentControlMapper.findViewingHistory(
+			familyId,
+			childId,
+			Math.max(1, Math.min(limit, 50))
+		);
+	}
+
+	public List<ParentAlertResponse> getAlerts(int familyId, int limit) {
+		return parentControlMapper.findAlertsByFamilyId(familyId, Math.max(1, Math.min(limit, 50)));
+	}
+
+	public PlaybackDecisionResult buildPlaybackDecision(
+		Integer childId,
+		String videoId,
+		Integer durationSeconds,
+		boolean harmful,
+		List<String> harmfulReasons,
+		boolean shortForm
+	) {
+		if (childId == null) {
+			return defaultPlaybackDecision(harmful, harmfulReasons, shortForm);
+		}
+
+		ChildProfile child = getRequiredChild(childId);
+		ChildWatchPolicyRecord policy = resolvePolicy(child.childId());
+		LocalDateTime now = LocalDateTime.now();
+		int todayWatchMinutes = defaultInt(parentControlMapper.sumTodayWatchMinutesByChildId(child.childId()));
+		int projectedMinutes = todayWatchMinutes + Math.max(1, (durationSeconds == null ? 0 : durationSeconds) / 60);
+		boolean allowedNow = isViewingAllowed(policy, now);
+		boolean dailyLimitExceeded = projectedMinutes > defaultInt(policy.getDailyLimitMinutes());
+
+		int riskScore = 10;
+		List<String> behaviorSignals = new ArrayList<>();
+		behaviorSignals.add("실시간 행동 분석은 카메라 기반 addiction.py 전체 모드에서 수행됩니다.");
+
+		if (shortForm) {
+			riskScore += 12;
+			behaviorSignals.add("짧은 영상으로 분류되어 연속 시청 위험도를 가중했습니다.");
+		}
+
+		if (harmful) {
+			riskScore += 35;
+			behaviorSignals.add("유해 콘텐츠 신호가 감지되어 재생 위험도를 높였습니다.");
+		}
+
+		if (!allowedNow) {
+			riskScore += 22;
+			behaviorSignals.add("현재 시간대는 보호자가 허용한 시청 가능 시간을 벗어났습니다.");
+		}
+
+		if (dailyLimitExceeded) {
+			riskScore += 30;
+			behaviorSignals.add("오늘 누적 시청 시간이 일일 허용 시간을 초과할 가능성이 높습니다.");
+		} else if (policy.getDailyLimitMinutes() != null && policy.getDailyLimitMinutes() > 0) {
+			int usageRate = Math.min(100, projectedMinutes * 100 / policy.getDailyLimitMinutes());
+			if (usageRate >= 80) {
+				riskScore += 15;
+				behaviorSignals.add("오늘 시청 시간이 제한 시간의 80%를 넘어 부모 알림 임계치에 근접했습니다.");
+			}
+		}
+
+		String riskLevel = riskScore >= 75
+			? "위험"
+			: riskScore >= 50
+				? "경고"
+				: riskScore >= 25 ? "주의" : "정상";
+
+		boolean blockedByPolicy = Boolean.TRUE.equals(policy.getAutoBlockEnabled())
+			&& (!allowedNow || dailyLimitExceeded);
+		boolean allowed = !harmful && !blockedByPolicy;
+		String message;
+		if (harmful) {
+			message = "유해 콘텐츠가 감지되어 재생이 차단되었습니다.";
+		} else if (!allowedNow) {
+			message = "설정된 시청 가능 시간이 아니라 재생이 차단되었습니다.";
+		} else if (dailyLimitExceeded) {
+			message = "오늘 시청 허용 시간을 초과하여 재생이 차단되었습니다.";
+		} else {
+			message = "재생이 허용되었습니다. YouTube로 이동해 시청할 수 있습니다.";
+		}
+
+		int viewingId = createViewingRecord(child, videoId);
+		createAlertsIfNeeded(
+			viewingId,
+			policy,
+			riskScore,
+			harmful,
+			allowed,
+			harmfulReasons,
+			message
+		);
+
+		return new PlaybackDecisionResult(
+			allowed,
+			message,
+			Math.min(100, riskScore),
+			riskLevel,
+			behaviorSignals
+		);
+	}
+
+	private PlaybackDecisionResult defaultPlaybackDecision(
+		boolean harmful,
+		List<String> harmfulReasons,
+		boolean shortForm
+	) {
+		List<String> behaviorSignals = new ArrayList<>();
+		behaviorSignals.add("아동 프로필을 선택하면 시청 시간 제한과 부모 알림 규칙이 함께 적용됩니다.");
+		if (shortForm) {
+			behaviorSignals.add("짧은 영상은 반복 시청 위험이 있어 추가 주의 대상으로 표기됩니다.");
+		}
+		if (harmful && harmfulReasons != null && !harmfulReasons.isEmpty()) {
+			behaviorSignals.add("유해 신호가 감지되어 보호자 확인 후 재생하는 것이 안전합니다.");
+		}
+
+		return new PlaybackDecisionResult(
+			!harmful,
+			harmful ? "유해 콘텐츠가 감지되어 재생 전 보호자 확인이 필요합니다." : "분석 결과상 즉시 재생 가능합니다.",
+			harmful ? 70 : shortForm ? 34 : 18,
+			harmful ? "경고" : shortForm ? "주의" : "정상",
+			behaviorSignals
+		);
+	}
+
+	private ParentChildResponse toChildResponse(ChildProfile child) {
+		ChildWatchPolicyRecord policy = resolvePolicy(child.childId());
+		return new ParentChildResponse(
+			child.childId(),
+			child.childName(),
+			child.birthYear(),
+			defaultInt(parentControlMapper.sumTodayWatchMinutesByChildId(child.childId())),
+			isViewingAllowed(policy, LocalDateTime.now()),
+			toPolicyResponse(policy)
+		);
+	}
+
+	private ChildWatchPolicyRecord resolvePolicy(int childId) {
+		ChildWatchPolicyRecord existing = parentControlMapper.findWatchPolicyByChildId(childId);
+		if (existing != null) {
+			return existing;
+		}
+
+		ChildWatchPolicyRecord fallback = new ChildWatchPolicyRecord();
+		fallback.setChildId(childId);
+		fallback.setDailyLimitMinutes(120);
+		fallback.setWeekdayStartHour(7);
+		fallback.setWeekdayEndHour(21);
+		fallback.setWeekendStartHour(8);
+		fallback.setWeekendEndHour(22);
+		fallback.setNotificationThreshold(70);
+		fallback.setAutoBlockEnabled(Boolean.TRUE);
+		parentControlMapper.upsertWatchPolicy(fallback);
+		return parentControlMapper.findWatchPolicyByChildId(childId);
+	}
+
+	private ChildWatchPolicyResponse toPolicyResponse(ChildWatchPolicyRecord record) {
+		return new ChildWatchPolicyResponse(
+			record.getChildId(),
+			record.getDailyLimitMinutes(),
+			record.getWeekdayStartHour(),
+			record.getWeekdayEndHour(),
+			record.getWeekendStartHour(),
+			record.getWeekendEndHour(),
+			record.getNotificationThreshold(),
+			Boolean.TRUE.equals(record.getAutoBlockEnabled()),
+			record.getUpdatedAt()
+		);
+	}
+
+	private boolean isViewingAllowed(ChildWatchPolicyRecord policy, LocalDateTime currentTime) {
+		DayOfWeek dayOfWeek = currentTime.getDayOfWeek();
+		boolean isWeekend = dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY;
+		int start = isWeekend ? defaultInt(policy.getWeekendStartHour()) : defaultInt(policy.getWeekdayStartHour());
+		int end = isWeekend ? defaultInt(policy.getWeekendEndHour()) : defaultInt(policy.getWeekdayEndHour());
+		int hour = currentTime.getHour();
+		return hour >= start && hour < end;
+	}
+
+	private void validatePolicy(ChildWatchPolicyRecord policy) {
+		validateHourRange(policy.getWeekdayStartHour(), policy.getWeekdayEndHour(), "주중");
+		validateHourRange(policy.getWeekendStartHour(), policy.getWeekendEndHour(), "주말");
+
+		if (policy.getDailyLimitMinutes() == null
+			|| policy.getDailyLimitMinutes() < 10
+			|| policy.getDailyLimitMinutes() > 720) {
+			throw new IllegalArgumentException("일일 시청 시간은 10분 이상 720분 이하로 설정해야 합니다.");
+		}
+
+		if (policy.getNotificationThreshold() == null
+			|| policy.getNotificationThreshold() < 0
+			|| policy.getNotificationThreshold() > 100) {
+			throw new IllegalArgumentException("알림 임계치는 0 이상 100 이하로 설정해야 합니다.");
+		}
+	}
+
+	private void validateHourRange(Integer start, Integer end, String label) {
+		if (start == null || end == null || start < 0 || start > 23 || end < 1 || end > 24 || start >= end) {
+			throw new IllegalArgumentException(label + " 시청 가능 시간 설정이 올바르지 않습니다.");
+		}
+	}
+
+	private ChildProfile getRequiredChild(int childId) {
+		ChildProfile child = parentControlMapper.findChildById(childId);
+		if (child == null) {
+			throw new IllegalArgumentException("아동 정보를 찾을 수 없습니다.");
+		}
+		return child;
+	}
+
+	private int createViewingRecord(ChildProfile child, String videoId) {
+		ViewingHistoryWriteRecord record = new ViewingHistoryWriteRecord();
+		record.setViewingId(defaultInt(parentControlMapper.nextViewingId()));
+		record.setUserId(child.userId());
+		record.setChildId(child.childId());
+		record.setVideoId(videoId);
+		record.setWatchTime(LocalDateTime.now());
+		record.setWatchDuration(0);
+		parentControlMapper.insertViewingHistory(record);
+		return record.getViewingId();
+	}
+
+	private void createAlertsIfNeeded(
+		int viewingId,
+		ChildWatchPolicyRecord policy,
+		int riskScore,
+		boolean harmful,
+		boolean allowed,
+		List<String> harmfulReasons,
+		String playbackMessage
+	) {
+		if (harmful) {
+			insertAlert(viewingId, "유해콘텐츠", "높음", firstReason(harmfulReasons, playbackMessage));
+		}
+
+		if (!allowed) {
+			insertAlert(viewingId, "재생차단", "높음", playbackMessage);
+		}
+
+		if (riskScore >= defaultInt(policy.getNotificationThreshold())) {
+			insertAlert(
+				viewingId,
+				"중독위험",
+				riskScore >= 80 ? "위험" : "주의",
+				"중독 위험 점수 " + riskScore + "점으로 보호자 알림 전송 조건을 충족했습니다."
+			);
+		}
+	}
+
+	private void insertAlert(int viewingId, String alertType, String riskLevel, String messageText) {
+		parentControlMapper.insertAlert(
+			new AlertLogRecord(
+				defaultInt(parentControlMapper.nextAlertId()),
+				viewingId,
+				alertType,
+				riskLevel,
+				messageText
+			)
+		);
+	}
+
+	private String firstReason(List<String> harmfulReasons, String fallback) {
+		return harmfulReasons == null || harmfulReasons.isEmpty() ? fallback : harmfulReasons.get(0);
+	}
+
+	private int defaultInt(Integer value) {
+		return value == null ? 0 : value;
+	}
+}

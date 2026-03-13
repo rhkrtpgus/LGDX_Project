@@ -169,6 +169,9 @@ public class AnalysisHistoryResponse {
 	}
 
 	public AnalysisResponse toResponse(List<String> harmfulReasons) {
+		boolean harmfulValue = Boolean.TRUE.equals(harmful);
+		boolean shortFormValue = Boolean.TRUE.equals(shortForm);
+
 		return new AnalysisResponse(
 			analysisId,
 			inputUrl,
@@ -176,15 +179,24 @@ public class AnalysisHistoryResponse {
 			title,
 			categoryNameKo,
 			durationSeconds,
-			Boolean.TRUE.equals(shortForm),
+			shortFormValue,
 			Boolean.TRUE.equals(blockedByCategory),
 			Boolean.TRUE.equals(hasViolence),
 			violenceScore,
 			violencePositiveWindows,
 			Boolean.TRUE.equals(hasNudity),
 			nudityMatchCount,
-			Boolean.TRUE.equals(harmful),
+			harmfulValue,
 			harmfulReasons,
+			new PlaybackDecisionResult(
+				!harmfulValue,
+				harmfulValue
+					? "이전 분석 결과 기준으로 보호자 확인이 필요한 콘텐츠입니다."
+					: "이전 분석 결과 기준으로 즉시 재생 가능한 콘텐츠입니다.",
+				harmfulValue ? 70 : shortFormValue ? 34 : 18,
+				harmfulValue ? "경고" : shortFormValue ? "주의" : "정상",
+				List.of("최근 분석 이력은 저장된 메타데이터 기준으로 다시 표시됩니다.")
+			),
 			null,
 			status,
 			errorMessage,

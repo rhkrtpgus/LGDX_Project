@@ -1,112 +1,162 @@
-CREATE TABLE IF NOT EXISTS "User" (
-  "user_id" INT PRIMARY KEY,
-  "user_name" VARCHAR(100),
-  "birth_year" INT
+drop table if exists alert_log cascade;
+drop table if exists child_watch_policy cascade;
+drop table if exists viewing_history cascade;
+drop table if exists children cascade;
+drop table if exists report_daily cascade;
+drop table if exists report_week cascade;
+drop table if exists report_month cascade;
+drop table if exists analysis_history cascade;
+drop table if exists app_runtime_settings cascade;
+drop table if exists users cascade;
+
+create table users (
+  user_id int primary key,
+  user_name varchar(100) not null,
+  birth_year int not null
 );
 
-CREATE TABLE IF NOT EXISTS "Child" (
-  "child_id" INT PRIMARY KEY,
-  "user_id" INT,
-  "child_name" VARCHAR(100),
-  "birth_year" INT,
-  CONSTRAINT "fk_child_user"
-    FOREIGN KEY ("user_id")
-    REFERENCES "User" ("user_id")
-    ON DELETE CASCADE
+create table children (
+  child_id int primary key,
+  user_id int not null,
+  child_name varchar(100) not null,
+  birth_year int not null,
+  constraint fk_children_user
+    foreign key (user_id)
+    references users (user_id)
+    on delete cascade
 );
 
-CREATE TABLE IF NOT EXISTS "ViewingHistory" (
-  "viewing_id" INT PRIMARY KEY,
-  "user_id" INT,
-  "video_id" VARCHAR(120),
-  "watch_time" TIMESTAMP,
-  "watch_duration" INT,
-  CONSTRAINT "fk_viewing_user"
-    FOREIGN KEY ("user_id")
-    REFERENCES "User" ("user_id")
-    ON DELETE CASCADE
+create table viewing_history (
+  viewing_id int primary key,
+  user_id int not null,
+  child_id int not null,
+  video_id varchar(120) not null,
+  watch_time timestamp not null,
+  watch_duration int not null,
+  constraint fk_viewing_history_user
+    foreign key (user_id)
+    references users (user_id)
+    on delete cascade,
+  constraint fk_viewing_history_child
+    foreign key (child_id)
+    references children (child_id)
+    on delete cascade
 );
 
-CREATE TABLE IF NOT EXISTS "AlertLog" (
-  "alert_id" INT PRIMARY KEY,
-  "viewing_id" INT,
-  "alert_type" VARCHAR(80),
-  "risk_level" VARCHAR(40),
-  "message_text" VARCHAR(500),
-  CONSTRAINT "fk_alert_viewing"
-    FOREIGN KEY ("viewing_id")
-    REFERENCES "ViewingHistory" ("viewing_id")
-    ON DELETE CASCADE
+create table child_watch_policy (
+  child_id int primary key,
+  daily_limit_minutes int not null default 120,
+  weekday_start_hour int not null default 7,
+  weekday_end_hour int not null default 21,
+  weekend_start_hour int not null default 8,
+  weekend_end_hour int not null default 22,
+  notification_threshold int not null default 70,
+  auto_block_enabled boolean not null default true,
+  updated_at timestamp not null default current_timestamp,
+  constraint fk_child_watch_policy_child
+    foreign key (child_id)
+    references children (child_id)
+    on delete cascade
 );
 
-CREATE TABLE IF NOT EXISTS "report_daily" (
-  "report_id" INT PRIMARY KEY,
-  "family_id" INT,
-  "compare_time" INT,
-  "count_alert_type" INT
+create table alert_log (
+  alert_id int primary key,
+  viewing_id int not null,
+  alert_type varchar(80) not null,
+  risk_level varchar(40) not null,
+  message_text varchar(500) not null,
+  constraint fk_alert_log_viewing
+    foreign key (viewing_id)
+    references viewing_history (viewing_id)
+    on delete cascade
 );
 
-CREATE TABLE IF NOT EXISTS "report_week" (
-  "report_id" INT PRIMARY KEY,
-  "family_id" INT,
-  "compare_time" INT,
-  "count_alert_type" INT
+create table report_daily (
+  report_id int primary key,
+  family_id int not null,
+  compare_time int not null,
+  count_alert_type int not null,
+  constraint fk_report_daily_family
+    foreign key (family_id)
+    references users (user_id)
+    on delete cascade
 );
 
-CREATE TABLE IF NOT EXISTS "report_month" (
-  "report_id" INT PRIMARY KEY,
-  "family_id" INT,
-  "compare_time" INT,
-  "count_alert_type" INT
+create table report_week (
+  report_id int primary key,
+  family_id int not null,
+  compare_time int not null,
+  count_alert_type int not null,
+  constraint fk_report_week_family
+    foreign key (family_id)
+    references users (user_id)
+    on delete cascade
 );
 
-CREATE TABLE IF NOT EXISTS "AnalysisHistory" (
-  "analysis_id" BIGSERIAL PRIMARY KEY,
-  "input_url" VARCHAR(1000) NOT NULL,
-  "video_id" VARCHAR(120),
-  "title" VARCHAR(300),
-  "category_name_ko" VARCHAR(120),
-  "duration_seconds" INT,
-  "is_short_form" BOOLEAN NOT NULL DEFAULT FALSE,
-  "blocked_by_category" BOOLEAN NOT NULL DEFAULT FALSE,
-  "has_violence" BOOLEAN NOT NULL DEFAULT FALSE,
-  "violence_score" DOUBLE PRECISION,
-  "violence_positive_windows" INT,
-  "has_nudity" BOOLEAN NOT NULL DEFAULT FALSE,
-  "nudity_match_count" INT,
-  "harmful" BOOLEAN NOT NULL DEFAULT FALSE,
-  "harmful_reasons_json" TEXT,
-  "status" VARCHAR(40) NOT NULL,
-  "error_message" TEXT,
-  "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+create table report_month (
+  report_id int primary key,
+  family_id int not null,
+  compare_time int not null,
+  count_alert_type int not null,
+  constraint fk_report_month_family
+    foreign key (family_id)
+    references users (user_id)
+    on delete cascade
 );
 
-CREATE TABLE IF NOT EXISTS "AppRuntimeSettings" (
-  "settings_id" SMALLINT PRIMARY KEY,
-  "privacy_consent" BOOLEAN NOT NULL DEFAULT FALSE,
-  "addiction_monitor_enabled" BOOLEAN NOT NULL DEFAULT FALSE,
-  "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT "chk_runtime_settings_singleton"
-    CHECK ("settings_id" = 1)
+create table analysis_history (
+  analysis_id bigint generated by default as identity primary key,
+  input_url varchar(1000) not null,
+  video_id varchar(120),
+  title varchar(300),
+  category_name_ko varchar(120),
+  duration_seconds int,
+  is_short_form boolean not null default false,
+  blocked_by_category boolean not null default false,
+  has_violence boolean not null default false,
+  violence_score double precision,
+  violence_positive_windows int,
+  has_nudity boolean not null default false,
+  nudity_match_count int,
+  harmful boolean not null default false,
+  harmful_reasons_json text,
+  status varchar(40) not null,
+  error_message text,
+  created_at timestamp not null default current_timestamp
 );
 
-CREATE INDEX IF NOT EXISTS "idx_child_user_id"
-  ON "Child" ("user_id");
+create table app_runtime_settings (
+  settings_id smallint primary key,
+  privacy_consent boolean not null default false,
+  addiction_monitor_enabled boolean not null default false,
+  updated_at timestamp not null default current_timestamp,
+  constraint chk_app_runtime_settings_singleton
+    check (settings_id = 1)
+);
 
-CREATE INDEX IF NOT EXISTS "idx_viewing_user_time"
-  ON "ViewingHistory" ("user_id", "watch_time" DESC);
+create index idx_children_user_id
+  on children (user_id);
 
-CREATE INDEX IF NOT EXISTS "idx_alert_viewing_id"
-  ON "AlertLog" ("viewing_id");
+create index idx_viewing_history_user_time
+  on viewing_history (user_id, watch_time desc);
 
-CREATE INDEX IF NOT EXISTS "idx_report_daily_family_id"
-  ON "report_daily" ("family_id");
+create index idx_viewing_history_child_time
+  on viewing_history (child_id, watch_time desc);
 
-CREATE INDEX IF NOT EXISTS "idx_report_week_family_id"
-  ON "report_week" ("family_id");
+create index idx_alert_log_viewing_id
+  on alert_log (viewing_id);
 
-CREATE INDEX IF NOT EXISTS "idx_report_month_family_id"
-  ON "report_month" ("family_id");
+create index idx_child_watch_policy_child_id
+  on child_watch_policy (child_id);
 
-CREATE INDEX IF NOT EXISTS "idx_analysis_history_created_at"
-  ON "AnalysisHistory" ("created_at" DESC);
+create index idx_report_daily_family_id
+  on report_daily (family_id);
+
+create index idx_report_week_family_id
+  on report_week (family_id);
+
+create index idx_report_month_family_id
+  on report_month (family_id);
+
+create index idx_analysis_history_created_at
+  on analysis_history (created_at desc);

@@ -124,6 +124,37 @@ class AnalysisResult:
     nudity_matches: list[dict] = field(default_factory=list)
 
 
+def serialize_analysis_result(result: AnalysisResult) -> dict:
+    return asdict(result)
+
+
+def build_analysis_history_payload(
+    result: AnalysisResult,
+    *,
+    status: str = "COMPLETED",
+    error_message: Optional[str] = None,
+) -> dict:
+    """Build a DB-friendly payload for analysis_history-like storage."""
+    return {
+        "input_url": result.input_url,
+        "video_id": result.video_id,
+        "title": result.title,
+        "category_name_ko": result.category_name_ko,
+        "duration_seconds": result.duration_seconds,
+        "is_short_form": result.is_short_form,
+        "blocked_by_category": result.category_filter.is_blocked,
+        "has_violence": result.has_violence,
+        "violence_score": result.violence_score,
+        "violence_positive_windows": result.violence_positive_windows,
+        "has_nudity": result.has_nudity,
+        "nudity_match_count": result.nudity_match_count,
+        "harmful": bool(result.harmful_reasons),
+        "harmful_reasons_json": json.dumps(result.harmful_reasons, ensure_ascii=False),
+        "status": status,
+        "error_message": error_message,
+    }
+
+
 def build_youtube_client():
     if not YOUTUBE_API_KEY:
         raise ValueError("YouTube API key is not set. Configure YOUTUBE_API_KEY.")

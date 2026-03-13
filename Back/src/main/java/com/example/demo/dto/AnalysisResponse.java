@@ -19,6 +19,7 @@ public record AnalysisResponse(
 	Integer nudityMatchCount,
 	boolean harmful,
 	List<String> harmfulReasons,
+	PlaybackDecisionResult playback,
 	AddictionMonitorResponse addictionMonitor,
 	String status,
 	String errorMessage,

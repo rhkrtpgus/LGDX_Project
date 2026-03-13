@@ -26,25 +26,25 @@
   </resultMap>
 
   <insert id="insert" parameterType="com.example.demo.domain.AnalysisHistoryRecord" useGeneratedKeys="true" keyProperty="analysisId" keyColumn="analysis_id">
-    INSERT INTO "AnalysisHistory" (
-      "input_url",
-      "video_id",
-      "title",
-      "category_name_ko",
-      "duration_seconds",
-      "is_short_form",
-      "blocked_by_category",
-      "has_violence",
-      "violence_score",
-      "violence_positive_windows",
-      "has_nudity",
-      "nudity_match_count",
-      "harmful",
-      "harmful_reasons_json",
-      "status",
-      "error_message",
-      "created_at"
-    ) VALUES (
+    insert into analysis_history (
+      input_url,
+      video_id,
+      title,
+      category_name_ko,
+      duration_seconds,
+      is_short_form,
+      blocked_by_category,
+      has_violence,
+      violence_score,
+      violence_positive_windows,
+      has_nudity,
+      nudity_match_count,
+      harmful,
+      harmful_reasons_json,
+      status,
+      error_message,
+      created_at
+    ) values (
       #{inputUrl},
       #{videoId},
       #{title},
@@ -66,28 +66,28 @@
   </insert>
 
   <select id="findRecent" resultMap="analysisHistoryResultMap">
-    SELECT
-      "analysis_id" AS analysis_id,
-      "input_url" AS input_url,
-      "video_id" AS video_id,
-      "title" AS title,
-      "category_name_ko" AS category_name_ko,
-      "duration_seconds" AS duration_seconds,
-      "is_short_form" AS is_short_form,
-      "blocked_by_category" AS blocked_by_category,
-      "has_violence" AS has_violence,
-      "violence_score" AS violence_score,
-      "violence_positive_windows" AS violence_positive_windows,
-      "has_nudity" AS has_nudity,
-      "nudity_match_count" AS nudity_match_count,
-      "harmful" AS harmful,
-      "harmful_reasons_json" AS harmful_reasons_json,
-      "status" AS status,
-      "error_message" AS error_message,
-      "created_at" AS created_at
-    FROM "AnalysisHistory"
-    ORDER BY "created_at" DESC, "analysis_id" DESC
-    LIMIT #{limit}
+    select
+      analysis_id as analysis_id,
+      input_url as input_url,
+      video_id as video_id,
+      title as title,
+      category_name_ko as category_name_ko,
+      duration_seconds as duration_seconds,
+      is_short_form as is_short_form,
+      blocked_by_category as blocked_by_category,
+      has_violence as has_violence,
+      violence_score as violence_score,
+      violence_positive_windows as violence_positive_windows,
+      has_nudity as has_nudity,
+      nudity_match_count as nudity_match_count,
+      harmful as harmful,
+      harmful_reasons_json as harmful_reasons_json,
+      status as status,
+      error_message as error_message,
+      created_at as created_at
+    from analysis_history
+    order by created_at desc, analysis_id desc
+    limit #{limit}
   </select>
 
 </mapper>

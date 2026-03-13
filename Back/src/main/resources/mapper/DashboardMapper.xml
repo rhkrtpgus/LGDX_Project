@@ -14,38 +14,38 @@
   </resultMap>
 
   <select id="countUsers" resultType="int">
-    SELECT COUNT(*)
-    FROM "User"
+    select count(*)
+    from users
   </select>
 
   <select id="countChildren" resultType="int">
-    SELECT COUNT(*)
-    FROM "Child"
+    select count(*)
+    from children
   </select>
 
   <select id="countViewings" resultType="int">
-    SELECT COUNT(*)
-    FROM "ViewingHistory"
+    select count(*)
+    from viewing_history
   </select>
 
   <select id="countAlerts" resultType="int">
-    SELECT COUNT(*)
-    FROM "AlertLog"
+    select count(*)
+    from alert_log
   </select>
 
   <select id="findRecentAlerts" resultMap="recentAlertResultMap">
-    SELECT
-      a."alert_id" AS alert_id,
-      a."alert_type" AS alert_type,
-      a."risk_level" AS risk_level,
-      a."message_text" AS message_text,
-      v."video_id" AS video_id,
-      v."watch_time" AS watch_time
-    FROM "AlertLog" a
-    JOIN "ViewingHistory" v
-      ON v."viewing_id" = a."viewing_id"
-    ORDER BY v."watch_time" DESC NULLS LAST, a."alert_id" DESC
-    LIMIT #{limit}
+    select
+      a.alert_id as alert_id,
+      a.alert_type as alert_type,
+      a.risk_level as risk_level,
+      a.message_text as message_text,
+      v.video_id as video_id,
+      v.watch_time as watch_time
+    from alert_log a
+    join viewing_history v
+      on v.viewing_id = a.viewing_id
+    order by v.watch_time desc nulls last, a.alert_id desc
+    limit #{limit}
   </select>
 
 </mapper>

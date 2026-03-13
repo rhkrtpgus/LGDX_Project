@@ -4,6 +4,7 @@ import com.example.demo.domain.AnalysisHistoryRecord;
 import com.example.demo.dto.AddictionMonitorResponse;
 import com.example.demo.dto.AnalysisHistoryResponse;
 import com.example.demo.dto.AnalysisResponse;
+import com.example.demo.dto.PlaybackDecisionResult;
 import com.example.demo.dto.RuntimeSettingsResponse;
 import com.example.demo.repository.AnalysisHistoryMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -29,6 +30,7 @@ public class ModelAnalysisService {
 
 	private final AnalysisHistoryMapper analysisHistoryMapper;
 	private final RuntimeSettingsService runtimeSettingsService;
+	private final ParentControlService parentControlService;
 	private final ObjectMapper objectMapper;
 	private final String pythonCommand;
 	private final String workingDirectory;
@@ -40,6 +42,7 @@ public class ModelAnalysisService {
 	public ModelAnalysisService(
 		AnalysisHistoryMapper analysisHistoryMapper,
 		RuntimeSettingsService runtimeSettingsService,
+		ParentControlService parentControlService,
 		ObjectMapper objectMapper,
 		@Value("${model.python-command}") String pythonCommand,
 		@Value("${model.working-directory}") String workingDirectory,
@@ -50,6 +53,7 @@ public class ModelAnalysisService {
 	) {
 		this.analysisHistoryMapper = analysisHistoryMapper;
 		this.runtimeSettingsService = runtimeSettingsService;
+		this.parentControlService = parentControlService;
 		this.objectMapper = objectMapper;
 		this.pythonCommand = pythonCommand;
 		this.workingDirectory = workingDirectory;
@@ -59,7 +63,7 @@ public class ModelAnalysisService {
 		this.addictionExecutionTimeoutSeconds = addictionExecutionTimeoutSeconds;
 	}
 
-	public AnalysisResponse analyzeYoutubeVideo(String videoUrl) {
+	public AnalysisResponse analyzeYoutubeVideo(String videoUrl, Integer childId) {
 		RuntimeSettingsResponse runtimeSettings = runtimeSettingsService.getCurrent();
 		AnalysisHistoryRecord record = new AnalysisHistoryRecord();
 		record.setInputUrl(videoUrl);
@@ -88,8 +92,17 @@ public class ModelAnalysisService {
 			record.setStatus("SUCCESS");
 
 			analysisHistoryMapper.insert(record);
+
+			PlaybackDecisionResult playback = parentControlService.buildPlaybackDecision(
+				childId,
+				record.getVideoId(),
+				record.getDurationSeconds(),
+				record.isHarmful(),
+				harmfulReasons,
+				record.isShortForm()
+			);
 			AddictionMonitorResponse addictionMonitor = runAddictionMonitor(videoUrl, runtimeSettings);
-			return toResponse(record, harmfulReasons, addictionMonitor);
+			return toResponse(record, harmfulReasons, playback, addictionMonitor);
 		} catch (Exception exception) {
 			record.setStatus("FAILED");
 			record.setErrorMessage(trimToLength(exception.getMessage(), 4000));
@@ -100,6 +113,13 @@ public class ModelAnalysisService {
 			return toResponse(
 				record,
 				Collections.emptyList(),
+				new PlaybackDecisionResult(
+					false,
+					"분석이 실패하여 자동 재생 여부를 판단할 수 없습니다.",
+					0,
+					"대기",
+					List.of("백엔드 또는 Python 모델 상태를 확인해야 합니다.")
+				),
 				buildSkippedMonitor(runtimeSettings, "메인 모델 분석이 실패하여 addiction.py는 실행하지 않았습니다.")
 			);
 		}
@@ -155,7 +175,7 @@ public class ModelAnalysisService {
 				true,
 				true,
 				"SUCCESS",
-				"addiction.py 메타데이터 점검을 완료했습니다."
+				"addiction.py 메타데이터 점검이 완료되었습니다."
 			);
 		} catch (Exception exception) {
 			return new AddictionMonitorResponse(
@@ -245,6 +265,7 @@ public class ModelAnalysisService {
 	private AnalysisResponse toResponse(
 		AnalysisHistoryRecord record,
 		List<String> harmfulReasons,
+		PlaybackDecisionResult playback,
 		AddictionMonitorResponse addictionMonitor
 	) {
 		return new AnalysisResponse(
@@ -263,6 +284,7 @@ public class ModelAnalysisService {
 			record.getNudityMatchCount(),
 			record.isHarmful(),
 			harmfulReasons,
+			playback,
 			addictionMonitor,
 			record.getStatus(),
 			record.getErrorMessage(),

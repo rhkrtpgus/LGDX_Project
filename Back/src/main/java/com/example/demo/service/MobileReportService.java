@@ -23,7 +23,7 @@ public class MobileReportService {
 	public MobileReportResponse getMobileReport(int familyId) {
 		String familyName = reportMapper.findFamilyNameByFamilyId(familyId);
 		if (familyName == null) {
-			throw new IllegalArgumentException("해당 family_id에 대한 리포트를 찾지 못했습니다.");
+			throw new IllegalArgumentException("해당 family_id의 리포트를 찾지 못했습니다.");
 		}
 
 		DailyReport daily = reportMapper.findDailyByFamilyId(familyId);

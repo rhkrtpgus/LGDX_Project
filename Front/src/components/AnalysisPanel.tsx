@@ -1,18 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import {
   analyzeYoutubeVideo,
   fetchAnalysisHistory,
+  fetchParentChildren,
   type AnalysisResult,
+  type ParentChild,
 } from '../lib/api'
 
 type AnalysisPanelProps = {
+  familyId?: number
   onStatusChange?: (message: string) => void
-}
-
-type AnalysisInsight = {
-  riskScore: number
-  summary: string
-  actions: string[]
 }
 
 const SAMPLE_URL = 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'
@@ -21,142 +18,108 @@ function openYoutube(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-function buildInsight(result: AnalysisResult): AnalysisInsight {
-  let score = 0
-
-  if (result.blockedByCategory) {
-    score += 30
+function buildRiskSummary(result: AnalysisResult) {
+  if (result.playback.addictionRiskScore >= 75) {
+    return '위험도가 높습니다. 보호자 확인 후 재생 여부를 결정하는 편이 안전합니다.'
   }
 
-  if (result.hasViolence) {
-    score += Math.round((result.violenceScore ?? 0.5) * 40)
+  if (result.playback.addictionRiskScore >= 45) {
+    return '주의 구간입니다. 시청 시간과 반복 재생 여부를 함께 확인하세요.'
   }
 
-  if (result.hasNudity) {
-    score += 35
-  }
-
-  if (result.shortForm) {
-    score += 10
-  }
-
-  const riskScore = Math.max(0, Math.min(100, score))
-  const actions: string[] = []
-
-  if (result.blockedByCategory) {
-    actions.push('카테고리 차단 대상이므로 보호 모드 기준으로 재확인하세요.')
-  }
-
-  if (result.hasViolence) {
-    actions.push('폭력 감지가 있어 보호자 확인 후 재생 여부를 결정하세요.')
-  }
-
-  if (result.hasNudity) {
-    actions.push('선정성 감지가 있어 아동 프로필에서는 차단하는 편이 안전합니다.')
-  }
-
-  if (result.addictionMonitor?.status === 'SKIPPED') {
-    actions.push('추가 모니터링이 건너뛰어졌습니다. 설정에서 동의와 실행 상태를 점검하세요.')
-  }
-
-  if (result.addictionMonitor?.status === 'FAILED') {
-    actions.push('addiction.py 추가 점검이 실패했습니다. 시스템 상태 보드에서 모델 상태를 확인하세요.')
-  }
-
-  if (actions.length === 0) {
-    actions.push('현재 결과 기준으로는 위험 신호가 낮습니다. 그대로 이력을 저장해 두면 됩니다.')
-  }
-
-  const summary =
-    riskScore >= 70
-      ? '고위험으로 분류할 만한 신호가 많습니다.'
-      : riskScore >= 40
-        ? '주의가 필요한 혼합 신호가 있습니다.'
-        : '상대적으로 안정적인 결과입니다.'
-
-  return { riskScore, summary, actions }
+  return '현재 규칙 기준에서는 비교적 안정적인 콘텐츠로 분류되었습니다.'
 }
 
-function buildShareText(result: AnalysisResult, insight: AnalysisInsight) {
+function buildShareText(result: AnalysisResult) {
   return [
-    `[유튜브 분석 리포트]`,
-    `제목: ${result.title ?? '알 수 없음'}`,
+    '[아동 TV 시청 안전 리포트]',
+    `제목: ${result.title ?? '정보 없음'}`,
     `URL: ${result.inputUrl}`,
-    `위험 점수: ${insight.riskScore}점`,
     `카테고리: ${result.categoryNameKo ?? '-'}`,
-    `폭력 감지: ${result.hasViolence ? '예' : '아니오'}`,
-    `선정성 감지: ${result.hasNudity ? '예' : '아니오'}`,
-    `addiction.py: ${result.addictionMonitor?.status ?? '정보 없음'}`,
-    `권장 조치: ${insight.actions.join(' / ')}`,
+    `유해 판정: ${result.harmful ? '주의 필요' : '안전'}`,
+    `재생 허용: ${result.playback.allowed ? '허용' : '차단'}`,
+    `중독 위험 점수: ${result.playback.addictionRiskScore}점`,
+    `중독 위험 단계: ${result.playback.addictionRiskLevel}`,
+    `권장 안내: ${result.playback.message}`,
   ].join('\n')
 }
 
-export function AnalysisPanel({ onStatusChange }: AnalysisPanelProps) {
+export function AnalysisPanel({ familyId = 1, onStatusChange }: AnalysisPanelProps) {
   const [videoUrl, setVideoUrl] = useState(SAMPLE_URL)
+  const [children, setChildren] = useState<ParentChild[]>([])
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(null)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [history, setHistory] = useState<AnalysisResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const insight = result ? buildInsight(result) : null
-
   useEffect(() => {
-    void refreshHistory()
-  }, [])
+    void Promise.all([refreshHistory(), refreshChildren()])
+  }, [familyId])
 
   async function refreshHistory() {
     try {
-      const nextHistory = await fetchAnalysisHistory(6)
-      setHistory(nextHistory)
+      setHistory(await fetchAnalysisHistory(6))
     } catch {
       setHistory([])
     }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function refreshChildren() {
+    try {
+      const nextChildren = await fetchParentChildren(familyId)
+      setChildren(nextChildren)
+      setSelectedChildId((current) => current ?? nextChildren[0]?.childId ?? null)
+    } catch {
+      setChildren([])
+      setSelectedChildId(null)
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLoading(true)
     setError(null)
-    onStatusChange?.('유튜브 모델 분석 요청 전송 중')
+    onStatusChange?.('유튜브 콘텐츠를 분석하고 재생 가능 여부를 확인하는 중입니다.')
 
     try {
-      const response = await analyzeYoutubeVideo(videoUrl)
+      const response = await analyzeYoutubeVideo(videoUrl, selectedChildId)
       setResult(response)
       onStatusChange?.(
-        response.status === 'SUCCESS'
-          ? `${response.title ?? '유튜브 분석'} 완료`
-          : '유튜브 분석 실패',
+        response.playback.allowed ? '재생 허용 결과를 받았습니다.' : '재생 차단 결과를 받았습니다.',
       )
       await refreshHistory()
     } catch {
-      setError('분석 요청에 실패했습니다. 백엔드, PostgreSQL, Python 모델 연결 상태를 확인하세요.')
-      onStatusChange?.('유튜브 분석 요청 실패')
+      setError(
+        '분석 요청에 실패했습니다. 백엔드, PostgreSQL, Python 모델 연결 상태를 확인하세요.',
+      )
+      onStatusChange?.('유튜브 분석 요청에 실패했습니다.')
     } finally {
       setLoading(false)
     }
   }
 
   async function handleCopyReport() {
-    if (!result || !insight) {
+    if (!result) {
       return
     }
 
     try {
-      await navigator.clipboard.writeText(buildShareText(result, insight))
+      await navigator.clipboard.writeText(buildShareText(result))
       onStatusChange?.('분석 리포트를 클립보드에 복사했습니다.')
     } catch {
-      onStatusChange?.('클립보드 복사에 실패했습니다.')
+      onStatusChange?.('리포트 복사에 실패했습니다.')
     }
   }
 
   return (
-    <section className="service-panel">
+    <section className="service-panel service-panel--analysis">
       <div className="service-panel__header">
-        <span className="section-heading__eyebrow">유튜브 모델 연결</span>
-        <h2>유튜브 위험도 분석</h2>
+        <span className="section-heading__eyebrow">TV앱 보호 기능</span>
+        <h2>유튜브 재생 전 안전 분석</h2>
         <p>
-          유튜브 URL을 넣으면 백엔드가 Python 모델을 실행하고, 결과를 PostgreSQL 이력에
-          저장합니다. 원본 유튜브 이동과 분석 리포트 복사도 바로 할 수 있습니다.
+          유튜브 URL을 입력하면 메타데이터, 유해 여부, 중독 위험도, 재생 허용 여부를 TV
+          화면에서 바로 확인할 수 있습니다.
         </p>
       </div>
 
@@ -168,68 +131,79 @@ export function AnalysisPanel({ onStatusChange }: AnalysisPanelProps) {
           onChange={(event) => setVideoUrl(event.target.value)}
           placeholder="유튜브 URL을 입력하세요"
         />
+        <select
+          className="analysis-input analysis-input--compact"
+          value={selectedChildId ?? ''}
+          onChange={(event) => setSelectedChildId(Number(event.target.value))}
+        >
+          {children.length > 0 ? (
+            children.map((child) => (
+              <option key={child.childId} value={child.childId}>
+                {child.childName}
+              </option>
+            ))
+          ) : (
+            <option value="">아동 프로필 없음</option>
+          )}
+        </select>
         <button className="analysis-submit" type="submit" disabled={loading}>
-          {loading ? '분석 중...' : '모델 실행'}
-        </button>
-        <button className="analysis-link" type="button" onClick={() => openYoutube(videoUrl)}>
-          유튜브 열기
+          {loading ? '분석 중...' : '재생 요청 분석'}
         </button>
       </form>
 
       {error ? <p className="service-panel__error">{error}</p> : null}
 
-      {result && insight ? (
+      {result ? (
         <div className="analysis-result">
           <div className="analysis-result__headline">
-            <strong>{result.title ?? '결과 없음'}</strong>
-            <span className={result.harmful ? 'is-danger' : 'is-safe'}>
-              {result.status === 'SUCCESS'
-                ? result.harmful
-                  ? '주의 필요'
-                  : '위험 요소 낮음'
-                : '실행 실패'}
+            <strong>{result.title ?? '제목 정보 없음'}</strong>
+            <span className={result.playback.allowed ? 'is-safe' : 'is-danger'}>
+              {result.playback.allowed ? '재생 가능' : '재생 차단'}
             </span>
           </div>
 
           <p>
-            카테고리 {result.categoryNameKo ?? '-'} · 재생 길이 {result.durationSeconds ?? 0}초
+            카테고리 {result.categoryNameKo ?? '-'} · 영상 길이 {result.durationSeconds ?? 0}초
           </p>
 
           <div className="analysis-score-card">
             <div>
-              <span>위험 점수</span>
-              <strong>{insight.riskScore}점</strong>
+              <span>중독 위험 점수</span>
+              <strong>{result.playback.addictionRiskScore}점</strong>
             </div>
-            <p>{insight.summary}</p>
+            <p>{buildRiskSummary(result)}</p>
           </div>
 
           <div className="analysis-result__chips">
+            <span>콘텐츠 유형: {result.categoryNameKo ?? '미분류'}</span>
             <span>카테고리 차단: {result.blockedByCategory ? '예' : '아니오'}</span>
             <span>폭력 감지: {result.hasViolence ? '예' : '아니오'}</span>
             <span>선정성 감지: {result.hasNudity ? '예' : '아니오'}</span>
             <span>쇼츠 여부: {result.shortForm ? '예' : '아니오'}</span>
           </div>
 
-          <div className="analysis-result__monitor">
-            <strong>추가 모니터링 상태</strong>
-            <p>
-              {result.addictionMonitor?.status ?? '정보 없음'} ·{' '}
-              {result.addictionMonitor?.message ?? '추가 모니터링 정보가 없습니다.'}
-            </p>
+          <div className="analysis-actions-card">
+            <strong>재생 판단</strong>
+            <p>{result.playback.message}</p>
           </div>
 
           <div className="analysis-actions-card">
-            <strong>권장 조치</strong>
+            <strong>행동 분석 연동 상태</strong>
             <ul className="analysis-result__reasons">
-              {insight.actions.map((action) => (
-                <li key={action}>{action}</li>
+              {result.playback.behaviorSignals.map((signal) => (
+                <li key={signal}>{signal}</li>
               ))}
             </ul>
           </div>
 
+          <div className="analysis-result__monitor">
+            <strong>addiction.py 실행 상태</strong>
+            <p>{result.addictionMonitor?.message ?? '추가 모니터링 정보가 없습니다.'}</p>
+          </div>
+
           {result.harmfulReasons.length > 0 ? (
             <div className="analysis-actions-card">
-              <strong>모델 판단 근거</strong>
+              <strong>유해 판정 근거</strong>
               <ul className="analysis-result__reasons">
                 {result.harmfulReasons.map((reason) => (
                   <li key={reason}>{reason}</li>
@@ -240,11 +214,12 @@ export function AnalysisPanel({ onStatusChange }: AnalysisPanelProps) {
 
           <div className="analysis-result__actions">
             <button
-              className="analysis-link"
+              className="analysis-submit"
               type="button"
+              disabled={!result.playback.allowed}
               onClick={() => openYoutube(result.inputUrl)}
             >
-              원본 유튜브 열기
+              유튜브로 이동
             </button>
             <button className="analysis-link" type="button" onClick={() => void handleCopyReport()}>
               리포트 복사
@@ -268,18 +243,15 @@ export function AnalysisPanel({ onStatusChange }: AnalysisPanelProps) {
           >
             <div>
               <strong>{item.title ?? item.inputUrl}</strong>
-              <span>{item.status === 'SUCCESS' ? '완료' : '실패'}</span>
+              <span>{item.playback.allowed ? '허용' : '주의'}</span>
             </div>
             <p>
-              {item.categoryNameKo ?? '분류 없음'} · 위험 여부 {item.harmful ? '주의 필요' : '낮음'}
+              {item.categoryNameKo ?? '미분류'} · 위험 점수 {item.playback.addictionRiskScore}점 ·{' '}
+              {item.playback.addictionRiskLevel}
             </p>
             <div className="analysis-history__actions">
               <small>{item.createdAt ? new Date(item.createdAt).toLocaleString('ko-KR') : ''}</small>
-              <button
-                className="analysis-link"
-                type="button"
-                onClick={() => openYoutube(item.inputUrl)}
-              >
+              <button className="analysis-link" type="button" onClick={() => openYoutube(item.inputUrl)}>
                 유튜브 열기
               </button>
             </div>

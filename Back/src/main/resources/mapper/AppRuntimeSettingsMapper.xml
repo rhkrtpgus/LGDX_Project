@@ -12,31 +12,31 @@
   </resultMap>
 
   <select id="findCurrent" resultMap="runtimeSettingsResultMap">
-    SELECT
-      "settings_id" AS settings_id,
-      "privacy_consent" AS privacy_consent,
-      "addiction_monitor_enabled" AS addiction_monitor_enabled,
-      "updated_at" AS updated_at
-    FROM "AppRuntimeSettings"
-    WHERE "settings_id" = 1
+    select
+      settings_id as settings_id,
+      privacy_consent as privacy_consent,
+      addiction_monitor_enabled as addiction_monitor_enabled,
+      updated_at as updated_at
+    from app_runtime_settings
+    where settings_id = 1
   </select>
 
   <insert id="upsert" parameterType="com.example.demo.domain.AppRuntimeSettingsRecord">
-    INSERT INTO "AppRuntimeSettings" (
-      "settings_id",
-      "privacy_consent",
-      "addiction_monitor_enabled",
-      "updated_at"
-    ) VALUES (
+    insert into app_runtime_settings (
+      settings_id,
+      privacy_consent,
+      addiction_monitor_enabled,
+      updated_at
+    ) values (
       1,
       #{privacyConsent},
       #{addictionMonitorEnabled},
-      CURRENT_TIMESTAMP
+      current_timestamp
     )
-    ON CONFLICT ("settings_id") DO UPDATE SET
-      "privacy_consent" = EXCLUDED."privacy_consent",
-      "addiction_monitor_enabled" = EXCLUDED."addiction_monitor_enabled",
-      "updated_at" = CURRENT_TIMESTAMP
+    on conflict (settings_id) do update set
+      privacy_consent = excluded.privacy_consent,
+      addiction_monitor_enabled = excluded.addiction_monitor_enabled,
+      updated_at = current_timestamp
   </insert>
 
 </mapper>

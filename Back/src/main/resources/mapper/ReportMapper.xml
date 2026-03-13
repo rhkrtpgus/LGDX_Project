@@ -5,53 +5,53 @@
 <mapper namespace="com.example.demo.repository.ReportMapper">
 
   <select id="findDailyByFamilyId" resultType="com.example.demo.domain.DailyReport">
-    SELECT
-      "report_id" AS reportId,
-      "family_id" AS familyId,
-      "compare_time" AS compareTime,
-      "count_alert_type" AS countAlertType
-    FROM "report_daily"
-    WHERE "family_id" = #{familyId}
-    ORDER BY "report_id" DESC
-    LIMIT 1
+    select
+      report_id as reportId,
+      family_id as familyId,
+      compare_time as compareTime,
+      count_alert_type as countAlertType
+    from report_daily
+    where family_id = #{familyId}
+    order by report_id desc
+    limit 1
   </select>
 
   <select id="findWeeklyByFamilyId" resultType="com.example.demo.domain.WeeklyReport">
-    SELECT
-      "report_id" AS reportId,
-      "family_id" AS familyId,
-      "compare_time" AS compareTime,
-      "count_alert_type" AS countAlertType
-    FROM "report_week"
-    WHERE "family_id" = #{familyId}
-    ORDER BY "report_id" DESC
-    LIMIT 1
+    select
+      report_id as reportId,
+      family_id as familyId,
+      compare_time as compareTime,
+      count_alert_type as countAlertType
+    from report_week
+    where family_id = #{familyId}
+    order by report_id desc
+    limit 1
   </select>
 
   <select id="findMonthlyByFamilyId" resultType="com.example.demo.domain.MonthlyReport">
-    SELECT
-      "report_id" AS reportId,
-      "family_id" AS familyId,
-      "compare_time" AS compareTime,
-      "count_alert_type" AS countAlertType
-    FROM "report_month"
-    WHERE "family_id" = #{familyId}
-    ORDER BY "report_id" DESC
-    LIMIT 1
+    select
+      report_id as reportId,
+      family_id as familyId,
+      compare_time as compareTime,
+      count_alert_type as countAlertType
+    from report_month
+    where family_id = #{familyId}
+    order by report_id desc
+    limit 1
   </select>
 
   <select id="findFamilyNameByFamilyId" resultType="string">
-    SELECT "user_name"
-    FROM "User"
-    WHERE "user_id" = #{familyId}
+    select user_name
+    from users
+    where user_id = #{familyId}
   </select>
 
   <select id="findFamilies" resultType="com.example.demo.dto.ReportFamilyResponse">
-    SELECT
-      "user_id" AS familyId,
-      "user_name" AS familyName
-    FROM "User"
-    ORDER BY "user_id" ASC
+    select
+      user_id as familyId,
+      user_name as familyName
+    from users
+    order by user_id asc
   </select>
 
 </mapper>

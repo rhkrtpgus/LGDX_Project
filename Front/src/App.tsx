@@ -1,16 +1,24 @@
-import { useEffect, useState, startTransition, useDeferredValue } from 'react'
+﻿import { useEffect, useState, startTransition, useDeferredValue } from 'react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { AnimatePresence, motion } from 'motion/react'
 import './App.css'
-import { AnalysisPanel } from './components/AnalysisPanel'
 import { AppDock } from './components/AppDock'
 import { ContentRow } from './components/ContentRow'
-import { DashboardPanel } from './components/DashboardPanel'
 import { HeroPanel } from './components/HeroPanel'
+import { HomeLauncherPanel } from './components/HomeLauncherPanel'
+import { KidsWorldShowcasePanel } from './components/KidsWorldShowcasePanel'
+import { MovieTvShowcasePanel } from './components/MovieTvShowcasePanel'
 import { SettingsControlPanel } from './components/SettingsControlPanel'
-import { SystemHealthPanel } from './components/SystemHealthPanel'
 import { Sidebar } from './components/Sidebar'
-import { initialSpotlight, sidebarItems, type MediaItem, type PageContent, type QuickApp, type Spotlight } from './data/home'
+import { TvAppsShowcasePanel } from './components/TvAppsShowcasePanel'
+import {
+  initialSpotlight,
+  type MediaItem,
+  type PageContent,
+  type QuickApp,
+  type SidebarItem,
+  type Spotlight,
+} from './data/home'
 import { buildActionPage } from './data/actionPage'
 import { pageContentById } from './data/pages'
 
@@ -77,22 +85,43 @@ function ContentRoot({
   )
 }
 
+const navigationItems: SidebarItem[] = [
+  { id: 'search', label: '영화/TV방송', shortLabel: 'TV', hint: '채널과 콘텐츠', accent: '#e6b329' },
+  { id: 'live', label: '아이들나라', shortLabel: '키즈', hint: '아동 추천 화면', accent: '#f08b3c' },
+  { id: 'apps', label: 'TV앱', shortLabel: '앱', hint: '유튜브 보호 기능', accent: '#2d6cff' },
+  { id: 'settings', label: '설정', shortLabel: '설정', hint: '시스템과 동의 관리', accent: '#ce5da6' },
+]
+
 function App() {
-  const [activeNav, setActiveNav] = useState(sidebarItems[0].id)
+  const [activeNav, setActiveNav] = useState<SidebarItem['id']>('home')
   const [activeAppId, setActiveAppId] = useState(pageContentById.home.quickApps[0].id)
   const [detailPage, setDetailPage] = useState<PageContent | null>(null)
   const [spotlight, setSpotlight] = useState<Spotlight>(initialSpotlight)
   const [statusLabel, setStatusLabel] = useState(pageContentById.home.readyLabel)
   const [clock, setClock] = useState(() => new Date())
-  const deferredSpotlight = useDeferredValue(spotlight)
+
   const basePage = pageContentById[activeNav] ?? pageContentById.home
   const currentPage = detailPage ?? basePage
+  const showHomeLauncher = !detailPage && activeNav === 'home'
+  const showMovieTvSession = !detailPage && activeNav === 'search'
+  const showKidsWorldSession = !detailPage && activeNav === 'live'
+  const showTvAppsSession = !detailPage && activeNav === 'apps'
+  const showSettingsPanel = !detailPage && activeNav === 'settings'
+  const deferredSpotlight = useDeferredValue(spotlight)
 
   const { ref, focusKey, focusSelf } = useFocusable({
     focusKey: 'PAGE',
     trackChildren: true,
     isFocusBoundary: true,
-    preferredChildFocusKey: `CONTENT_ROOT-${currentPage.id}`,
+    preferredChildFocusKey: showHomeLauncher
+      ? 'HOME_LAUNCHER'
+      : showMovieTvSession
+        ? 'MOVIE_TV_SESSION'
+        : showKidsWorldSession
+          ? 'KIDS_WORLD_SESSION'
+        : showTvAppsSession
+          ? 'TV_APPS_SESSION'
+          : 'HERO_SECTION',
   })
 
   useEffect(() => {
@@ -141,7 +170,7 @@ function App() {
   }
 
   const launchApp = (app: QuickApp) => {
-    if (detailPage && app.category === '복귀') {
+    if (detailPage && app.id.endsWith('-back')) {
       setDetailPage(null)
       return
     }
@@ -149,7 +178,7 @@ function App() {
     if (app.spotlight.externalUrl) {
       setActiveAppId(app.id)
       previewSpotlight(app.spotlight)
-      openExternalUrl(app.spotlight.externalUrl, `${app.name}를 새 탭에서 열었습니다.`)
+      openExternalUrl(app.spotlight.externalUrl, `${app.name} ?붾㈃?쇰줈 ?대룞?덉뒿?덈떎.`)
       return
     }
 
@@ -159,7 +188,7 @@ function App() {
   }
 
   const launchTitle = (item: MediaItem) => {
-    if (detailPage && item.badge === '복귀') {
+    if (detailPage && (item.id.includes('-back') || item.badge === '蹂듦?')) {
       setDetailPage(null)
       return
     }
@@ -170,104 +199,137 @@ function App() {
 
   return (
     <FocusContext.Provider value={focusKey}>
-      <div ref={ref} className="tv-shell">
+      <div
+        ref={ref}
+        className={`tv-shell ${showHomeLauncher ? 'tv-shell--launcher' : ''} ${showKidsWorldSession ? 'tv-shell--kids' : ''}`}
+      >
         <div className="tv-shell__glow" />
         <div className="tv-shell__noise" />
 
-        <Sidebar items={sidebarItems} activeId={activeNav} onSelect={setActiveNav} />
+        {!showHomeLauncher ? (
+          <Sidebar
+            items={navigationItems}
+            activeId={activeNav}
+            onSelect={setActiveNav}
+            onGoHome={() => setActiveNav('home')}
+          />
+        ) : null}
 
-        <main className="main-stage">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentPage.id}
-              className="page-stage"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.24, ease: 'easeOut' }}
-            >
-              <header className="top-bar">
-                <div className="top-bar__copy">
-                  <span className="top-bar__eyebrow">{currentPage.headerEyebrow}</span>
-                  <h1>{currentPage.headerTitle}</h1>
-                  <p className="top-bar__description">{currentPage.headerDescription}</p>
-                </div>
-
-                <div className="top-bar__status">
-                  <span>{statusLabel}</span>
-                  <strong>{formatClock(clock)}</strong>
-                </div>
-              </header>
-
-              <section className="hero-grid">
-                <HeroPanel
-                  primaryLabel={currentPage.primaryActionLabel}
-                  secondaryLabel={currentPage.secondaryActionLabel}
-                  spotlight={deferredSpotlight}
-                  onPrimaryAction={() => openActionPage('primary', deferredSpotlight)}
-                  onSecondaryAction={() => {
-                    if (detailPage) {
-                      setDetailPage(null)
-                      return
-                    }
-                    openActionPage('secondary', deferredSpotlight)
-                  }}
-                />
-
-                <div className="hero-grid__side-panel">
-                  <span className="hero-grid__label">{currentPage.insight.label}</span>
-                  <strong>{currentPage.insight.title}</strong>
-                  <p>{currentPage.insight.description}</p>
-
-                  <div className="hero-grid__stats">
-                    {currentPage.insight.stats.map((stat) => (
-                      <div key={`${currentPage.id}-${stat.label}`}>
-                        <span>{stat.label}</span>
-                        <strong>{stat.value}</strong>
-                      </div>
-                    ))}
-                    <div>
-                      <span>현재 선택</span>
-                      <strong>{deferredSpotlight.title}</strong>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {!detailPage && activeNav === 'home' ? (
-                <DashboardPanel onStatusChange={setStatusLabel} />
-              ) : null}
-
-              {!detailPage && activeNav === 'search' ? (
-                <AnalysisPanel onStatusChange={setStatusLabel} />
-              ) : null}
-
-              {!detailPage && activeNav === 'settings' ? (
-                <>
-                  <SystemHealthPanel onStatusChange={setStatusLabel} />
-                  <SettingsControlPanel onStatusChange={setStatusLabel} />
-                </>
-              ) : null}
-
-              <div className="content-root">
-                <ContentRoot
-                  activeAppId={activeAppId}
-                  apps={currentPage.quickApps}
-                  dockEyebrow={currentPage.dockEyebrow}
-                  dockTitle={currentPage.dockTitle}
-                  pageId={currentPage.id}
-                  rows={currentPage.rows}
-                  onFocusApp={(app) => {
-                    setActiveAppId(app.id)
-                    previewSpotlight(app.spotlight)
-                  }}
-                  onLaunchApp={launchApp}
-                  onPreviewTitle={previewSpotlight}
-                  onLaunchTitle={launchTitle}
-                />
+        <main className={`main-stage ${showHomeLauncher ? 'main-stage--launcher' : ''}`}>
+          {showHomeLauncher ? (
+            <section className="launcher-scene">
+              <div className="launcher-scene__logo" aria-label="LG U+">
+                LG U+
               </div>
-            </motion.div>
-          </AnimatePresence>
+              <HomeLauncherPanel
+                onOpenMoviesTv={() => setActiveNav('search')}
+                onOpenKidsWorld={() => setActiveNav('live')}
+                onOpenSmartHome={() => setActiveNav('settings')}
+                onOpenYoutube={() =>
+                  openExternalUrl('https://www.youtube.com', '유튜브 화면으로 이동했습니다.')
+                }
+                onOpenTvApps={() => setActiveNav('apps')}
+                onOpenSettings={() => setActiveNav('settings')}
+              />
+            </section>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentPage.id}
+                className="page-stage"
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.24, ease: 'easeOut' }}
+              >
+                {showMovieTvSession ? (
+                  <MovieTvShowcasePanel
+                    clockLabel={formatClock(clock)}
+                    statusLabel={statusLabel}
+                    onStatusChange={setStatusLabel}
+                  />
+                ) : showKidsWorldSession ? (
+                  <KidsWorldShowcasePanel onStatusChange={setStatusLabel} />
+                ) : showTvAppsSession ? (
+                  <TvAppsShowcasePanel onStatusChange={setStatusLabel} />
+                ) : (
+                  <>
+                    <header className="top-bar">
+                      <div className="top-bar__copy">
+                        <span className="top-bar__eyebrow">{currentPage.headerEyebrow}</span>
+                        <h1>{currentPage.headerTitle}</h1>
+                        <p className="top-bar__description">{currentPage.headerDescription}</p>
+                      </div>
+
+                      <div className="top-bar__status">
+                        <span>{statusLabel}</span>
+                        <strong>{formatClock(clock)}</strong>
+                      </div>
+                    </header>
+
+                    <section className="hero-grid">
+                      <HeroPanel
+                        primaryLabel={currentPage.primaryActionLabel}
+                        secondaryLabel={currentPage.secondaryActionLabel}
+                        spotlight={deferredSpotlight}
+                        onPrimaryAction={() => openActionPage('primary', deferredSpotlight)}
+                        onSecondaryAction={() => {
+                          if (detailPage) {
+                            setDetailPage(null)
+                            return
+                          }
+                          openActionPage('secondary', deferredSpotlight)
+                        }}
+                      />
+
+                      <div className="hero-grid__side-panel">
+                        <span className="hero-grid__label">{currentPage.insight.label}</span>
+                        <strong>{currentPage.insight.title}</strong>
+                        <p>{currentPage.insight.description}</p>
+
+                        <div className="hero-grid__stats">
+                          {currentPage.insight.stats.map((stat) => (
+                            <div key={`${currentPage.id}-${stat.label}`}>
+                              <span>{stat.label}</span>
+                              <strong>{stat.value}</strong>
+                            </div>
+                          ))}
+                          <div>
+                            <span>?꾩옱 ?좏깮</span>
+                            <strong>{deferredSpotlight.title}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    {showSettingsPanel ? (
+                      <SettingsControlPanel onStatusChange={setStatusLabel} />
+                    ) : null}
+
+                    {!showSettingsPanel ? (
+                      <div className="content-root">
+                        <ContentRoot
+                          activeAppId={activeAppId}
+                          apps={currentPage.quickApps}
+                          dockEyebrow={currentPage.dockEyebrow}
+                          dockTitle={currentPage.dockTitle}
+                          pageId={currentPage.id}
+                          rows={currentPage.rows}
+                          onFocusApp={(app) => {
+                            setActiveAppId(app.id)
+                            previewSpotlight(app.spotlight)
+                          }}
+                          onLaunchApp={launchApp}
+                          onPreviewTitle={previewSpotlight}
+                          onLaunchTitle={launchTitle}
+                        />
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </main>
       </div>
     </FocusContext.Provider>
@@ -275,3 +337,4 @@ function App() {
 }
 
 export default App
+

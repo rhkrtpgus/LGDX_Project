@@ -29,8 +29,10 @@ import csv
 from collections import deque
 from datetime import datetime
 import threading
+import uuid
 
 from API import fetch_youtube_video_context
+from mongo_monitor_store import MongoMonitorStore
 
 # ─────────────────────────────────────────
 # 설정값 (튜닝 가능)
@@ -95,6 +97,9 @@ CONFIG = {
     "csv_interval": 1.0,                # CSV 데이터셋 저장 주기 (초) - 1초마다 1행
     "log_path": "kids_monitor_log.json",
     "csv_path": "kids_monitor_dataset.csv",  # [신규] CSV 데이터셋 경로
+    "mongo_enabled": os.getenv("MONGO_ENABLED", "true").lower() in {"1", "true", "yes", "on"},
+    "mongo_uri": os.getenv("MONGO_URI", "mongodb://localhost:27017"),
+    "mongo_database": os.getenv("MONGO_DATABASE", "lgdx_monitor"),
     "display_width": 1280,
     "display_height": 720,
     "preview_window_name": "Kids Monitor Demo Preview",
@@ -168,6 +173,10 @@ class KidsMonitorState:
     def __init__(self):
         self.session_start = time.time()
         self.watch_time = 0
+        self.session_id = f"session-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        self.user_id = None
+        self.child_id = None
+        self.analysis_id = None
 
         # 눈 깜박임 
         self.blink_count = 0
@@ -221,6 +230,16 @@ class KidsMonitorState:
         # ── [신규] 집중도 Score
         self.focus_score = 0.0          # 0~100, 높을수록 집중
         self.focus_history = deque(maxlen=300)  # 최근 5분 기록
+        self.risk_history = deque(maxlen=300)
+        self.telemetry_sample_count = 0
+        self.focus_score_sum = 0.0
+        self.risk_score_sum = 0.0
+        self.front_facing_count = 0
+        self.safe_distance_count = 0
+        self.max_focus_score = 0.0
+        self.min_focus_score = 100.0
+        self.max_risk_score = 0.0
+        self.last_child_messages = []
 
         # 로그
         self.log_data = []
@@ -244,6 +263,20 @@ class KidsMonitorState:
         self.youtube_category_ko = context.category_name_ko
         self.youtube_duration_seconds = context.duration_seconds
         self.youtube_is_short_form = context.is_short_form
+
+
+def record_sample_metrics(state: KidsMonitorState):
+    state.telemetry_sample_count += 1
+    state.focus_score_sum += state.focus_score
+    state.risk_score_sum += state.risk_score
+    state.max_focus_score = max(state.max_focus_score, state.focus_score)
+    state.min_focus_score = min(state.min_focus_score, state.focus_score)
+    state.max_risk_score = max(state.max_risk_score, state.risk_score)
+
+    if state.head_is_front:
+        state.front_facing_count += 1
+    if state.distance_ok:
+        state.safe_distance_count += 1
 
 
 # ─────────────────────────────────────────
@@ -1100,13 +1133,74 @@ def build_parser():
         action="store_true",
         help="YouTube metadata only. Do not open the camera.",
     )
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Session identifier for MongoDB telemetry grouping.",
+    )
+    parser.add_argument(
+        "--user-id",
+        type=int,
+        default=None,
+        help="User id to store with MongoDB telemetry.",
+    )
+    parser.add_argument(
+        "--child-id",
+        type=int,
+        default=None,
+        help="Child id to store with MongoDB telemetry.",
+    )
+    parser.add_argument(
+        "--analysis-id",
+        type=int,
+        default=None,
+        help="Related analysis_history id for MongoDB telemetry.",
+    )
+    parser.add_argument(
+        "--disable-mongo",
+        action="store_true",
+        help="Disable MongoDB telemetry storage.",
+    )
+    parser.add_argument(
+        "--mongo-uri",
+        default=CONFIG["mongo_uri"],
+        help="MongoDB connection URI.",
+    )
+    parser.add_argument(
+        "--mongo-db",
+        default=CONFIG["mongo_database"],
+        help="MongoDB database name.",
+    )
     return parser
 
 
 def main():
     args = build_parser().parse_args()
+    state = KidsMonitorState()
+    if args.session_id:
+        state.session_id = args.session_id
+    state.user_id = args.user_id
+    state.child_id = args.child_id
+    state.analysis_id = args.analysis_id
+
+    mongo_store = None
+    mongo_enabled = CONFIG["mongo_enabled"] and not args.disable_mongo
+    if mongo_enabled:
+        try:
+            mongo_store = MongoMonitorStore(
+                uri=args.mongo_uri,
+                database=args.mongo_db,
+                enabled=True,
+            )
+            mongo_store.ping()
+            print(
+                f"[INFO] MongoDB telemetry enabled: {args.mongo_uri} / {args.mongo_db}"
+            )
+        except Exception as exc:
+            mongo_store = None
+            print(f"[WARN] MongoDB telemetry disabled: {exc}")
+
     if args.metadata_only:
-        state = KidsMonitorState()
         if args.youtube_url:
             try:
                 youtube_context = fetch_youtube_video_context(args.youtube_url)
@@ -1136,7 +1230,6 @@ def main():
     # [신규] CSV 초기화
     init_csv(CONFIG["csv_path"])
 
-    state = KidsMonitorState()
     scores = {"time": 0, "blink": 0, "pose": 0, "emotion": 0}
     pose_status = "분석 중"
     bpm  = 0
@@ -1169,6 +1262,13 @@ def main():
         except Exception as exc:
             print(f"[WARN] YouTube 메타데이터를 불러오지 못했습니다: {exc}")
             print("[WARN] YouTube 가중치 없이 기본 모니터링만 진행합니다.")
+
+    if mongo_store is not None:
+        try:
+            mongo_store.upsert_session_start(state)
+        except Exception as exc:
+            print(f"[WARN] Failed to initialize MongoDB session document: {exc}")
+            mongo_store = None
 
     while True:
         ret, frame = cap.read()
@@ -1251,9 +1351,12 @@ def main():
 
         # ── 위험도 계산
         state.risk_score, state.risk_level, scores = compute_risk_score(state)
+        state.risk_history.append(state.risk_score)
+        record_sample_metrics(state)
 
         # ── 현재 상태 스냅샷 출력 (외부 앱에서 폴링하거나 콘솔 확인용)
         snapshot = get_snapshot(state, bpm, pose_status)
+        state.last_child_messages = list(snapshot["child_messages"])
 
         # ── JSON 로그 저장 (주기적)
         if now - state.last_log_time >= CONFIG["log_interval"]:
@@ -1263,6 +1366,12 @@ def main():
         # ── [신규] CSV 데이터셋 저장 (주기적)
         if now - state.last_csv_time >= CONFIG["csv_interval"]:
             append_csv_row(CONFIG["csv_path"], state, ear, bpm, pose_status)
+            if mongo_store is not None:
+                try:
+                    mongo_store.insert_telemetry(state, snapshot, scores)
+                except Exception as exc:
+                    print(f"[WARN] Failed to write MongoDB telemetry: {exc}")
+                    mongo_store = None
             state.last_csv_time = now
 
         if args.show_preview:
@@ -1277,6 +1386,14 @@ def main():
     # 종료 시 최종 로그 저장
     save_log(state, scores)
     append_csv_row(CONFIG["csv_path"], state, ear, bpm, pose_status)
+    if mongo_store is not None:
+        try:
+            final_snapshot = get_snapshot(state, bpm, pose_status)
+            state.last_child_messages = list(final_snapshot["child_messages"])
+            mongo_store.insert_telemetry(state, final_snapshot, scores)
+            mongo_store.finalize_session(state)
+        except Exception as exc:
+            print(f"[WARN] Failed to finalize MongoDB telemetry: {exc}")
 
     print(f"\n[INFO] 세션 종료. 총 시청: {state.minutes()}분 {state.seconds_rem()}초")
     print(f"[INFO] JSON 로그: {CONFIG['log_path']}")

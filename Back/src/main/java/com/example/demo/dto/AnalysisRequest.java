@@ -1,4 +1,4 @@
 package com.example.demo.dto;
 
-public record AnalysisRequest(String videoUrl) {
+public record AnalysisRequest(String videoUrl, Integer childId) {
 }

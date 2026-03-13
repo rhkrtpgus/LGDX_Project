@@ -17,6 +17,7 @@ export type SidebarItem = {
   label: string
   shortLabel: string
   hint: string
+  accent?: string
 }
 
 export type QuickApp = {

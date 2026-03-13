@@ -4,15 +4,15 @@
   font-family: 'Noto Sans KR', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #251417;
+  color: #f4f7ff;
   background:
-    radial-gradient(circle at top, rgba(217, 31, 52, 0.08), transparent 0 24%),
-    linear-gradient(180deg, #fffdfd 0%, #fff5f6 64%, #ffffff 100%);
+    radial-gradient(circle at top, rgba(98, 148, 255, 0.1), transparent 0 24%),
+    linear-gradient(180deg, #050913 0%, #091121 62%, #060b16 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 * {
@@ -20,8 +20,8 @@
 }
 
 *::selection {
-  background: rgba(217, 31, 52, 0.18);
-  color: #251417;
+  background: rgba(255, 223, 125, 0.22);
+  color: #10131c;
 }
 
 html {
@@ -34,13 +34,16 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top, rgba(217, 31, 52, 0.06), transparent 0 20%),
-    linear-gradient(180deg, #fffefe 0%, #fff7f8 100%);
-  color: #251417;
+    radial-gradient(circle at top, rgba(98, 148, 255, 0.08), transparent 0 18%),
+    linear-gradient(180deg, #050913 0%, #091121 58%, #060b16 100%);
+  color: #f4f7ff;
 }
 
 body,
-button {
+button,
+input,
+select,
+textarea {
   font-family: inherit;
 }
 

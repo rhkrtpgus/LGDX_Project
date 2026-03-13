@@ -5,13 +5,7 @@ type SystemHealthPanelProps = {
   onStatusChange?: (message: string) => void
 }
 
-function HealthCard({
-  label,
-  item,
-}: {
-  label: string
-  item: ComponentHealth
-}) {
+function HealthCard({ label, item }: { label: string; item: ComponentHealth }) {
   const tone =
     item.status === 'UP' || item.status === 'READY'
       ? 'is-ok'
@@ -35,37 +29,22 @@ export function SystemHealthPanel({ onStatusChange }: SystemHealthPanelProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    let cancelled = false
-
     fetchSystemHealth()
       .then((data) => {
-        if (cancelled) {
-          return
-        }
         setHealth(data)
         onStatusChange?.('시스템 상태 보드를 업데이트했습니다.')
       })
       .catch(() => {
-        if (cancelled) {
-          return
-        }
         setError('시스템 상태 정보를 불러오지 못했습니다.')
       })
-
-    return () => {
-      cancelled = true
-    }
   }, [onStatusChange])
 
   return (
     <section className="service-panel">
       <div className="service-panel__header">
-        <span className="section-heading__eyebrow">시스템 상태 보드</span>
+        <span className="section-heading__eyebrow">시스템 상태</span>
         <h2>백엔드 · DB · 모델 연결 상태</h2>
-        <p>
-          지금 추가한 기능입니다. 프론트에서 바로 백엔드, PostgreSQL, 메인 모델, 추가
-          모니터링 스크립트 상태를 확인할 수 있습니다.
-        </p>
+        <p>분석 API, PostgreSQL, 메인 모델, 행동 분석 스크립트의 현재 상태를 점검합니다.</p>
       </div>
 
       {error ? <p className="service-panel__error">{error}</p> : null}
@@ -76,7 +55,7 @@ export function SystemHealthPanel({ onStatusChange }: SystemHealthPanelProps) {
             <HealthCard label="백엔드 API" item={health.backend} />
             <HealthCard label="PostgreSQL" item={health.database} />
             <HealthCard label="메인 분석 모델" item={health.mainModel} />
-            <HealthCard label="추가 모니터링" item={health.addictionModel} />
+            <HealthCard label="행동 분석 스크립트" item={health.addictionModel} />
           </div>
 
           <div className="health-runtime">

@@ -42,7 +42,9 @@ public class RuntimeSettingsService {
 			: current.addictionMonitorEnabled();
 
 		if (nextAddictionMonitorEnabled && !nextPrivacyConsent) {
-			throw new IllegalArgumentException("개인정보 수집 동의 후에만 addiction.py를 실행할 수 있습니다.");
+			throw new IllegalArgumentException(
+				"개인정보 수집 동의가 있어야 addiction.py 실행을 켤 수 있습니다."
+			);
 		}
 
 		if (!nextPrivacyConsent) {

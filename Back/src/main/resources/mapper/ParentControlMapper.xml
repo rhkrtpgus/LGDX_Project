@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.repository.ParentControlMapper">
+
+  <resultMap id="watchPolicyResultMap" type="com.example.demo.domain.ChildWatchPolicyRecord">
+    <id property="childId" column="child_id" />
+    <result property="dailyLimitMinutes" column="daily_limit_minutes" />
+    <result property="weekdayStartHour" column="weekday_start_hour" />
+    <result property="weekdayEndHour" column="weekday_end_hour" />
+    <result property="weekendStartHour" column="weekend_start_hour" />
+    <result property="weekendEndHour" column="weekend_end_hour" />
+    <result property="notificationThreshold" column="notification_threshold" />
+    <result property="autoBlockEnabled" column="auto_block_enabled" />
+    <result property="updatedAt" column="updated_at" />
+  </resultMap>
+
+  <resultMap id="parentAlertResultMap" type="com.example.demo.dto.ParentAlertResponse">
+    <id property="alertId" column="alert_id" />
+    <result property="viewingId" column="viewing_id" />
+    <result property="childId" column="child_id" />
+    <result property="childName" column="child_name" />
+    <result property="alertType" column="alert_type" />
+    <result property="riskLevel" column="risk_level" />
+    <result property="messageText" column="message_text" />
+    <result property="videoId" column="video_id" />
+    <result property="watchTime" column="watch_time" />
+  </resultMap>
+
+  <resultMap id="parentViewingHistoryResultMap" type="com.example.demo.dto.ParentViewingHistoryResponse">
+    <id property="viewingId" column="viewing_id" />
+    <result property="childId" column="child_id" />
+    <result property="childName" column="child_name" />
+    <result property="videoId" column="video_id" />
+    <result property="watchTime" column="watch_time" />
+    <result property="watchDuration" column="watch_duration" />
+    <result property="latestAlertType" column="latest_alert_type" />
+    <result property="latestRiskLevel" column="latest_risk_level" />
+  </resultMap>
+
+  <select id="findFamilyNameById" resultType="string">
+    select user_name
+    from users
+    where user_id = #{familyId}
+  </select>
+
+  <select id="findChildById" resultType="com.example.demo.domain.ChildProfile">
+    select
+      child_id as childId,
+      user_id as userId,
+      child_name as childName,
+      birth_year as birthYear
+    from children
+    where child_id = #{childId}
+  </select>
+
+  <select id="findChildrenByFamilyId" resultType="com.example.demo.domain.ChildProfile">
+    select
+      child_id as childId,
+      user_id as userId,
+      child_name as childName,
+      birth_year as birthYear
+    from children
+    where user_id = #{familyId}
+    order by child_id asc
+  </select>
+
+  <select id="findWatchPolicyByChildId" resultMap="watchPolicyResultMap">
+    select
+      child_id as child_id,
+      daily_limit_minutes as daily_limit_minutes,
+      weekday_start_hour as weekday_start_hour,
+      weekday_end_hour as weekday_end_hour,
+      weekend_start_hour as weekend_start_hour,
+      weekend_end_hour as weekend_end_hour,
+      notification_threshold as notification_threshold,
+      auto_block_enabled as auto_block_enabled,
+      updated_at as updated_at
+    from child_watch_policy
+    where child_id = #{childId}
+  </select>
+
+  <insert id="upsertWatchPolicy" parameterType="com.example.demo.domain.ChildWatchPolicyRecord">
+    insert into child_watch_policy (
+      child_id,
+      daily_limit_minutes,
+      weekday_start_hour,
+      weekday_end_hour,
+      weekend_start_hour,
+      weekend_end_hour,
+      notification_threshold,
+      auto_block_enabled,
+      updated_at
+    ) values (
+      #{childId},
+      #{dailyLimitMinutes},
+      #{weekdayStartHour},
+      #{weekdayEndHour},
+      #{weekendStartHour},
+      #{weekendEndHour},
+      #{notificationThreshold},
+      #{autoBlockEnabled},
+      current_timestamp
+    )
+    on conflict (child_id) do update set
+      daily_limit_minutes = excluded.daily_limit_minutes,
+      weekday_start_hour = excluded.weekday_start_hour,
+      weekday_end_hour = excluded.weekday_end_hour,
+      weekend_start_hour = excluded.weekend_start_hour,
+      weekend_end_hour = excluded.weekend_end_hour,
+      notification_threshold = excluded.notification_threshold,
+      auto_block_enabled = excluded.auto_block_enabled,
+      updated_at = current_timestamp
+  </insert>
+
+  <select id="sumTodayWatchMinutesByChildId" resultType="int">
+    select coalesce(sum(watch_duration), 0) / 60
+    from viewing_history
+    where child_id = #{childId}
+      and date(watch_time) = current_date
+  </select>
+
+  <select id="countTodayViewingsByFamilyId" resultType="int">
+    select count(*)
+    from viewing_history
+    where user_id = #{familyId}
+      and date(watch_time) = current_date
+  </select>
+
+  <select id="countAlertsByFamilyId" resultType="int">
+    select count(*)
+    from alert_log a
+    join viewing_history v
+      on v.viewing_id = a.viewing_id
+    where v.user_id = #{familyId}
+  </select>
+
+  <select id="findViewingHistory" resultMap="parentViewingHistoryResultMap">
+    select
+      v.viewing_id as viewing_id,
+      v.child_id as child_id,
+      c.child_name as child_name,
+      v.video_id as video_id,
+      v.watch_time as watch_time,
+      v.watch_duration as watch_duration,
+      a.alert_type as latest_alert_type,
+      a.risk_level as latest_risk_level
+    from viewing_history v
+    left join children c
+      on c.child_id = v.child_id
+    left join lateral (
+      select
+        alert_type,
+        risk_level
+      from alert_log
+      where viewing_id = v.viewing_id
+      order by alert_id desc
+      limit 1
+    ) a on true
+    where v.user_id = #{familyId}
+    <if test="childId != null">
+      and v.child_id = #{childId}
+    </if>
+    order by v.watch_time desc nulls last, v.viewing_id desc
+    limit #{limit}
+  </select>
+
+  <select id="findAlertsByFamilyId" resultMap="parentAlertResultMap">
+    select
+      a.alert_id as alert_id,
+      a.viewing_id as viewing_id,
+      v.child_id as child_id,
+      c.child_name as child_name,
+      a.alert_type as alert_type,
+      a.risk_level as risk_level,
+      a.message_text as message_text,
+      v.video_id as video_id,
+      v.watch_time as watch_time
+    from alert_log a
+    join viewing_history v
+      on v.viewing_id = a.viewing_id
+    left join children c
+      on c.child_id = v.child_id
+    where v.user_id = #{familyId}
+    order by v.watch_time desc nulls last, a.alert_id desc
+    limit #{limit}
+  </select>
+
+  <select id="nextViewingId" resultType="int">
+    select coalesce(max(viewing_id), 0) + 1
+    from viewing_history
+  </select>
+
+  <insert id="insertViewingHistory" parameterType="com.example.demo.domain.ViewingHistoryWriteRecord">
+    insert into viewing_history (
+      viewing_id,
+      user_id,
+      child_id,
+      video_id,
+      watch_time,
+      watch_duration
+    ) values (
+      #{viewingId},
+      #{userId},
+      #{childId},
+      #{videoId},
+      #{watchTime},
+      #{watchDuration}
+    )
+  </insert>
+
+  <select id="nextAlertId" resultType="int">
+    select coalesce(max(alert_id), 0) + 1
+    from alert_log
+  </select>
+
+  <insert id="insertAlert" parameterType="com.example.demo.domain.AlertLogRecord">
+    insert into alert_log (
+      alert_id,
+      viewing_id,
+      alert_type,
+      risk_level,
+      message_text
+    ) values (
+      #{alertId},
+      #{viewingId},
+      #{alertType},
+      #{riskLevel},
+      #{messageText}
+    )
+  </insert>
+
+  <select id="countPolicies" resultType="int">
+    select count(*)
+    from child_watch_policy
+  </select>
+
+  <select id="countHighRiskAlerts" resultType="int">
+    select count(*)
+    from alert_log
+    where lower(risk_level) in ('high', 'critical')
+       or risk_level in ('high-risk', 'danger')
+  </select>
+
+</mapper>
