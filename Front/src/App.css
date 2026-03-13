@@ -1086,6 +1086,36 @@
   min-height: 22rem;
 }
 
+.movie-tv-session__empty {
+  padding: 1.2rem 1.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.movie-tv-session__empty strong {
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.movie-tv-session__chips,
+.movie-tv-session__reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.movie-tv-session__chips span,
+.movie-tv-session__reasons span {
+  padding: 0.34rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(243, 246, 255, 0.9);
+  font-size: 0.74rem;
+}
+
 .movie-tv-session__hero-side {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1170,6 +1200,37 @@
   color: #241d08;
   font-size: 0.68rem;
   font-weight: 700;
+}
+
+.movie-tv-card__state {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.26rem 0.58rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.movie-tv-card__state--idle {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.movie-tv-card__state--checking,
+.movie-tv-card__state--priority {
+  background: rgba(255, 223, 125, 0.18);
+  color: #ffe57a;
+}
+
+.movie-tv-card__state--verified {
+  background: rgba(121, 217, 129, 0.14);
+  color: #bff6c4;
+}
+
+.movie-tv-card__state--blocked,
+.movie-tv-card__state--failed {
+  background: rgba(255, 124, 124, 0.14);
+  color: #ffb6b6;
 }
 
 .movie-tv-card.is-focused {

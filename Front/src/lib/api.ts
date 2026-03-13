@@ -187,7 +187,16 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`)
+    let detail = ''
+
+    try {
+      const payload = (await response.json()) as { detail?: string }
+      detail = payload.detail ? ` - ${payload.detail}` : ''
+    } catch {
+      detail = ''
+    }
+
+    throw new Error(`API request failed: ${response.status}${detail}`)
   }
 
   return response.json() as Promise<T>
@@ -201,9 +210,14 @@ export function fetchAnalysisHistory(limit = 5) {
   return request<AnalysisResult[]>(buildUrl(fastapiApiBaseUrl, `/analysis/history?limit=${limit}`))
 }
 
-export function analyzeYoutubeVideo(videoUrl: string, childId?: number | null) {
+export function analyzeYoutubeVideo(
+  videoUrl: string,
+  childId?: number | null,
+  signal?: AbortSignal,
+) {
   return request<AnalysisResult>(buildUrl(fastapiApiBaseUrl, '/analysis/youtube'), {
     method: 'POST',
+    signal,
     body: JSON.stringify({ videoUrl, childId }),
   })
 }
