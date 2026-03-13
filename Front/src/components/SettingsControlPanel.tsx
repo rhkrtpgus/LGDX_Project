@@ -35,44 +35,42 @@ type SettingsSection = {
 
 const settingsSections: SettingsSection[] = [
   {
-    id: 'guardian',
-    label: 'Guardian',
+    id: 'notice',
+    label: '공지사항',
     items: [
       {
-        id: 'guardian-report',
-        label: 'Trend Report',
-        title: 'Guardian trend report',
-        description:
-          'Review how each period changed against the usual baseline and whether alerts increased or decreased.',
+        id: 'notice-mobile',
+        label: '보호자 리포트',
+        title: '보호자 리포트',
+        description: '평소 시청 패턴과 비교해 얼마나 변했는지 일간, 주간, 월간 단위로 확인합니다.',
         detailType: 'report',
       },
       {
-        id: 'guardian-child',
-        label: 'Child Protection',
-        title: 'Child protection and camera monitor',
+        id: 'notice-child',
+        label: '자녀 보호 설정',
+        title: '자녀 보호 설정',
         description:
-          'Turn child protection on or off for each child. addiction.py runs only when this toggle and consent are both enabled.',
+          '자녀 보호 설정을 켜고 끄며, 설정이 켜진 자녀만 카메라 기반 모니터링이 연동됩니다.',
         detailType: 'childProtect',
       },
     ],
   },
   {
     id: 'system',
-    label: 'System',
+    label: '시스템 설정',
     items: [
       {
         id: 'system-consent',
-        label: 'Consent',
-        title: 'Privacy consent and runtime monitor',
-        description:
-          'Camera-based addiction monitoring needs privacy consent and the runtime monitor switch to be enabled.',
+        label: '개인정보 수집 동의',
+        title: '개인정보 수집 및 행동 분석 동의',
+        description: '카메라 기반 시청 행동 분석과 보호 기능 연동에 필요한 동의와 실행 상태입니다.',
         detailType: 'consent',
       },
       {
         id: 'system-start',
-        label: 'Startup',
-        title: 'Startup screen',
-        description: 'Launcher and quick-entry structure are fixed to the current TV demo flow.',
+        label: '시작 화면 설정',
+        title: '시작 화면 설정',
+        description: '현재 TV 첫 화면은 하단 런처 중심 구조로 고정돼 있습니다.',
         detailType: 'placeholder',
       },
     ],
@@ -81,7 +79,7 @@ const settingsSections: SettingsSection[] = [
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) {
-    return 'Not available'
+    return '없음'
   }
 
   return new Date(value).toLocaleString('ko-KR')
@@ -108,8 +106,8 @@ function PeriodCard({ period }: { period: ReportPeriod | null }) {
   if (!period) {
     return (
       <article className="settings-report-card">
-        <strong>No report</strong>
-        <p>There is no baseline report for this period yet.</p>
+        <strong>리포트 없음</strong>
+        <p>아직 이 기간의 기준 데이터가 없습니다.</p>
       </article>
     )
   }
@@ -123,47 +121,47 @@ function PeriodCard({ period }: { period: ReportPeriod | null }) {
         <strong>{period.period}</strong>
         <span className={`settings-report-card__tone settings-report-card__tone--${watchTone}`}>
           {period.watchDeltaMinutes == null
-            ? 'No baseline'
+            ? '기준 없음'
             : period.watchDeltaMinutes === 0
-              ? 'Stable'
+              ? '변화 없음'
               : period.watchDeltaMinutes > 0
-                ? 'Increased'
-                : 'Reduced'}
+                ? '증가'
+                : '감소'}
         </span>
       </div>
 
       <div className="settings-report-card__stats">
         <div>
-          <span>Current watch time</span>
-          <b>{period.currentWatchMinutes ?? 0} min</b>
+          <span>현재 시청 시간</span>
+          <b>{period.currentWatchMinutes ?? 0}분</b>
         </div>
         <div>
-          <span>Usual baseline</span>
-          <b>{period.compareTime ?? 0} min</b>
+          <span>평소 기준</span>
+          <b>{period.compareTime ?? 0}분</b>
         </div>
         <div>
-          <span>Watch delta</span>
-          <b>{formatSigned(period.watchDeltaMinutes, ' min')}</b>
+          <span>시청 시간 변화</span>
+          <b>{formatSigned(period.watchDeltaMinutes, '분')}</b>
         </div>
         <div>
-          <span>Watch change</span>
+          <span>변화율</span>
           <b>{formatSigned(period.watchDeltaPercent, '%')}</b>
         </div>
         <div>
-          <span>Current alerts</span>
-          <b>{period.currentAlertCount ?? 0}</b>
+          <span>현재 경고 수</span>
+          <b>{period.currentAlertCount ?? 0}건</b>
         </div>
         <div>
-          <span>Alert delta</span>
+          <span>경고 변화</span>
           <b className={`settings-report-card__metric settings-report-card__metric--${alertTone}`}>
-            {formatSigned(period.alertDeltaCount)}
+            {formatSigned(period.alertDeltaCount, '건')}
           </b>
         </div>
       </div>
 
       <div className="settings-report-card__summary">
-        <p>{period.watchSummary ?? 'No watch-time summary available.'}</p>
-        <p>{period.alertSummary ?? 'No alert summary available.'}</p>
+        <p>{period.watchSummary ?? '시청 시간 요약 정보가 없습니다.'}</p>
+        <p>{period.alertSummary ?? '경고 요약 정보가 없습니다.'}</p>
       </div>
     </article>
   )
@@ -174,8 +172,8 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
   const [showConsentSheet, setShowConsentSheet] = useState(false)
   const [savingRuntime, setSavingRuntime] = useState(false)
   const [savingProtection, setSavingProtection] = useState(false)
-  const [activeSectionId, setActiveSectionId] = useState(settingsSections[0].id)
-  const [activeItemId, setActiveItemId] = useState(settingsSections[0].items[0].id)
+  const [activeSectionId, setActiveSectionId] = useState(settingsSections[1].id)
+  const [activeItemId, setActiveItemId] = useState(settingsSections[1].items[0].id)
   const [reportFamilies, setReportFamilies] = useState<ReportFamily[]>([])
   const [selectedFamilyId, setSelectedFamilyId] = useState<number | null>(null)
   const [children, setChildren] = useState<ParentChild[]>([])
@@ -187,7 +185,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
   useEffect(() => {
     fetchRuntimeSettings()
       .then(setSettings)
-      .catch(() => onStatusChange?.('Could not load runtime settings.'))
+      .catch(() => onStatusChange?.('설정 정보를 불러오지 못했습니다.'))
   }, [onStatusChange])
 
   useEffect(() => {
@@ -221,13 +219,13 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
         setMobileReport(report)
         setChildren(nextChildren)
         setSelectedChildId((current) => current ?? nextChildren[0]?.childId ?? null)
-        onStatusChange?.('Guardian report and child settings were loaded.')
+        onStatusChange?.('보호자 리포트와 자녀 보호 설정을 불러왔습니다.')
       })
       .catch(() => {
         setMobileReport(null)
         setChildren([])
         setSelectedChildId(null)
-        setReportError('Could not load guardian report data.')
+        setReportError('보호자 리포트 정보를 불러오지 못했습니다.')
       })
       .finally(() => {
         setReportLoading(false)
@@ -258,7 +256,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
       setSettings(next)
       onStatusChange?.(message)
     } catch {
-      onStatusChange?.('Runtime settings could not be updated.')
+      onStatusChange?.('시스템 설정 저장에 실패했습니다.')
     } finally {
       setSavingRuntime(false)
     }
@@ -293,11 +291,11 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
 
       onStatusChange?.(
         nextEnabled
-          ? `${selectedChild.childName} child protection was enabled. Camera monitoring can now run when consent is active.`
-          : `${selectedChild.childName} child protection was disabled. addiction.py will be skipped for this child.`,
+          ? `${selectedChild.childName} 자녀 보호 설정을 켰습니다.`
+          : `${selectedChild.childName} 자녀 보호 설정을 껐습니다.`,
       )
     } catch {
-      onStatusChange?.('Child protection could not be updated.')
+      onStatusChange?.('자녀 보호 설정 저장에 실패했습니다.')
     } finally {
       setSavingProtection(false)
     }
@@ -308,7 +306,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
       <section className="settings-os-panel">
         <div className="settings-os-panel__columns">
           <div className="settings-os-panel__section-list">
-            <div className="settings-os-panel__title">Settings</div>
+            <div className="settings-os-panel__title">설정</div>
             {settingsSections.map((section) => (
               <button
                 key={section.id}
@@ -347,26 +345,26 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                 <div className="settings-os-detail-card">
                   <div className="settings-control-grid">
                     <div className="minimal-core-card">
-                      <strong>Privacy consent</strong>
-                      <p>{settings.privacyConsent ? 'Granted' : 'Required'}</p>
+                      <strong>개인정보 수집 동의</strong>
+                      <p>{settings.privacyConsent ? '동의 완료' : '동의 필요'}</p>
                     </div>
                     <div className="minimal-core-card">
-                      <strong>Runtime camera monitor</strong>
-                      <p>{settings.addictionMonitorEnabled ? 'Enabled' : 'Disabled'}</p>
+                      <strong>카메라 모니터 실행</strong>
+                      <p>{settings.addictionMonitorEnabled ? '실행 중' : '중지됨'}</p>
                     </div>
                   </div>
 
                   <div className="settings-os-detail-card__status">
                     <span className={settings.privacyConsent ? 'is-on' : 'is-off'}>
-                      {settings.privacyConsent ? 'Consent ready' : 'Consent needed'}
+                      {settings.privacyConsent ? '동의 완료' : '동의 필요'}
                     </span>
-                    <small>Last updated: {formatDateTime(settings.updatedAt)}</small>
+                    <small>마지막 갱신: {formatDateTime(settings.updatedAt)}</small>
                   </div>
 
                   <ul className="settings-os-detail-list">
-                    <li>`addiction.py` starts only when privacy consent is granted.</li>
-                    <li>The runtime monitor toggle can pause camera-based monitoring without revoking consent.</li>
-                    <li>Child protection must also be enabled for the selected child profile.</li>
+                    <li>개인정보 수집 동의가 있어야 `addiction.py`가 실행됩니다.</li>
+                    <li>카메라 모니터 실행을 끄면 동의를 유지한 채 모니터링만 중지할 수 있습니다.</li>
+                    <li>선택한 자녀의 보호 설정이 켜져 있어야 실제 모니터링이 연동됩니다.</li>
                   </ul>
 
                   <div className="settings-control-card__actions">
@@ -376,7 +374,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                       disabled={savingRuntime || settings.privacyConsent}
                       onClick={() => setShowConsentSheet(true)}
                     >
-                      Grant consent
+                      동의하기
                     </button>
                     <button
                       className="analysis-link"
@@ -385,11 +383,11 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                       onClick={() =>
                         void patchSettings(
                           { privacyConsent: false, addictionMonitorEnabled: false },
-                          'Privacy consent was revoked and camera monitoring was stopped.',
+                          '개인정보 수집 동의를 철회했습니다.',
                         )
                       }
                     >
-                      Revoke consent
+                      동의 철회
                     </button>
                     <button
                       className="analysis-link"
@@ -401,14 +399,12 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                             addictionMonitorEnabled: !settings.addictionMonitorEnabled,
                           },
                           settings.addictionMonitorEnabled
-                            ? 'Runtime camera monitoring was paused.'
-                            : 'Runtime camera monitoring was enabled.',
+                            ? '카메라 모니터 실행을 중지했습니다.'
+                            : '카메라 모니터 실행을 시작했습니다.',
                         )
                       }
                     >
-                      {settings.addictionMonitorEnabled
-                        ? 'Pause camera monitor'
-                        : 'Enable camera monitor'}
+                      {settings.addictionMonitorEnabled ? '모니터 중지' : '모니터 실행'}
                     </button>
                   </div>
                 </div>
@@ -428,7 +424,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                         </option>
                       ))
                     ) : (
-                      <option value="">No family</option>
+                      <option value="">연결된 가족 없음</option>
                     )}
                   </select>
 
@@ -444,7 +440,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                         </option>
                       ))
                     ) : (
-                      <option value="">No child</option>
+                      <option value="">연결된 자녀 없음</option>
                     )}
                   </select>
                 </div>
@@ -453,43 +449,34 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                   <>
                     <div className="settings-control-grid">
                       <div className="minimal-core-card">
-                        <strong>Child protection</strong>
-                        <p>{selectedChild.watchPolicy.autoBlockEnabled ? 'On' : 'Off'}</p>
+                        <strong>자녀 보호</strong>
+                        <p>{selectedChild.watchPolicy.autoBlockEnabled ? '켜짐' : '꺼짐'}</p>
                       </div>
                       <div className="minimal-core-card">
-                        <strong>Today watch time</strong>
-                        <p>{selectedChild.todayWatchMinutes} min</p>
+                        <strong>오늘 시청 시간</strong>
+                        <p>{selectedChild.todayWatchMinutes}분</p>
                       </div>
                       <div className="minimal-core-card">
-                        <strong>Daily limit</strong>
-                        <p>{selectedChild.watchPolicy.dailyLimitMinutes} min</p>
+                        <strong>일일 제한 시간</strong>
+                        <p>{selectedChild.watchPolicy.dailyLimitMinutes}분</p>
                       </div>
                       <div className="minimal-core-card">
-                        <strong>Notification threshold</strong>
+                        <strong>알림 기준</strong>
                         <p>{selectedChild.watchPolicy.notificationThreshold}</p>
                       </div>
                     </div>
 
                     <div className="settings-os-detail-card__status">
                       <span className={selectedChild.watchPolicy.autoBlockEnabled ? 'is-on' : 'is-off'}>
-                        {selectedChild.watchPolicy.autoBlockEnabled ? 'Protection enabled' : 'Protection disabled'}
+                        {selectedChild.watchPolicy.autoBlockEnabled ? '자녀 보호 실행 중' : '자녀 보호 꺼짐'}
                       </span>
-                      <small>
-                        Policy updated: {formatDateTime(selectedChild.watchPolicy.updatedAt)}
-                      </small>
+                      <small>마지막 갱신: {formatDateTime(selectedChild.watchPolicy.updatedAt)}</small>
                     </div>
 
                     <ul className="settings-os-detail-list">
-                      <li>
-                        Camera monitoring runs only when `privacyConsent`, `addictionMonitorEnabled`, and this child
-                        protection switch are all on.
-                      </li>
-                      <li>
-                        When protection is off, FastAPI skips `addiction.py` and no landmark telemetry is stored.
-                      </li>
-                      <li>
-                        When protection is on, `addiction.py` uses the camera and stores telemetry in MongoDB.
-                      </li>
+                      <li>개인정보 수집 동의, 카메라 모니터 실행, 자녀 보호 설정이 모두 켜져야 모니터링이 실행됩니다.</li>
+                      <li>자녀 보호 설정이 꺼져 있으면 `addiction.py`를 실행하지 않고 랜드마크도 저장하지 않습니다.</li>
+                      <li>자녀 보호 설정이 켜져 있으면 카메라 모니터링과 MongoDB 저장 흐름이 함께 동작합니다.</li>
                     </ul>
 
                     <div className="settings-control-card__actions">
@@ -500,15 +487,15 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                         onClick={() => void toggleChildProtection(!selectedChild.watchPolicy.autoBlockEnabled)}
                       >
                         {savingProtection
-                          ? 'Saving...'
+                          ? '저장 중...'
                           : selectedChild.watchPolicy.autoBlockEnabled
-                            ? 'Turn protection off'
-                            : 'Turn protection on'}
+                            ? '자녀 보호 끄기'
+                            : '자녀 보호 켜기'}
                       </button>
                     </div>
                   </>
                 ) : (
-                  <p>No child profile is available for this family.</p>
+                  <p>이 가족에 연결된 자녀 프로필이 없습니다.</p>
                 )}
               </div>
             ) : activeItem.detailType === 'report' ? (
@@ -526,17 +513,17 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                         </option>
                       ))
                     ) : (
-                      <option value="">No family</option>
+                      <option value="">연결된 가족 없음</option>
                     )}
                   </select>
                 </div>
 
                 <div className="settings-os-detail-card__status">
-                  <span className="is-on">Guardian report ready</span>
-                  <small>Generated: {formatDateTime(mobileReport?.generatedAt)}</small>
+                  <span className="is-on">리포트 연동</span>
+                  <small>최신 생성: {formatDateTime(mobileReport?.generatedAt)}</small>
                 </div>
 
-                {reportLoading ? <p>Loading guardian report...</p> : null}
+                {reportLoading ? <p>리포트를 불러오는 중입니다.</p> : null}
                 {reportError ? <p className="service-panel__error">{reportError}</p> : null}
 
                 {mobileReport ? (
@@ -546,14 +533,14 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                     <PeriodCard period={mobileReport.monthly} />
                   </div>
                 ) : (
-                  !reportLoading && <p>No report is available yet.</p>
+                  !reportLoading && <p>표시할 리포트 데이터가 없습니다.</p>
                 )}
               </div>
             ) : (
               <div className="settings-os-detail-card">
                 <div className="minimal-mobile-note">
-                  <strong>Reserved area</strong>
-                  <p>This tile is kept for the current TV demo structure and can be expanded later.</p>
+                  <strong>준비 중이거나 다른 화면에서 제공되는 메뉴입니다.</strong>
+                  <p>현재 TV 화면 구조에 맞춰 유지하는 영역이며, 필요하면 다음 단계에서 확장할 수 있습니다.</p>
                 </div>
               </div>
             )}
@@ -564,10 +551,10 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
       {showConsentSheet ? (
         <div className="consent-sheet">
           <div className="consent-sheet__card">
-            <strong>Privacy consent for camera monitoring</strong>
+            <strong>개인정보 수집 및 카메라 모니터링 동의</strong>
             <p>
-              Granting consent enables camera-based behavior monitoring. If a child profile also has
-              protection turned on, `addiction.py` can start and store landmark telemetry in MongoDB.
+              동의하면 카메라 기반 시청 행동 분석을 사용할 수 있습니다. 선택한 자녀의 보호 설정까지 켜져 있으면
+              `addiction.py`가 실행되고 MongoDB에 랜드마크 텔레메트리 저장 흐름이 연결됩니다.
             </p>
             <div className="consent-sheet__actions">
               <button
@@ -577,18 +564,14 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                   setShowConsentSheet(false)
                   void patchSettings(
                     { privacyConsent: true, addictionMonitorEnabled: true },
-                    'Privacy consent was granted and runtime camera monitoring was enabled.',
+                    '개인정보 수집 동의를 저장했습니다.',
                   )
                 }}
               >
-                Agree and continue
+                동의하고 계속
               </button>
-              <button
-                className="analysis-link"
-                type="button"
-                onClick={() => setShowConsentSheet(false)}
-              >
-                Cancel
+              <button className="analysis-link" type="button" onClick={() => setShowConsentSheet(false)}>
+                취소
               </button>
             </div>
           </div>
