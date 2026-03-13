@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.repository.AppRuntimeSettingsMapper">
+
+  <resultMap id="runtimeSettingsResultMap" type="com.example.demo.domain.AppRuntimeSettingsRecord">
+    <id property="settingsId" column="settings_id" />
+    <result property="privacyConsent" column="privacy_consent" />
+    <result property="addictionMonitorEnabled" column="addiction_monitor_enabled" />
+    <result property="updatedAt" column="updated_at" />
+  </resultMap>
+
+  <select id="findCurrent" resultMap="runtimeSettingsResultMap">
+    SELECT
+      "settings_id" AS settings_id,
+      "privacy_consent" AS privacy_consent,
+      "addiction_monitor_enabled" AS addiction_monitor_enabled,
+      "updated_at" AS updated_at
+    FROM "AppRuntimeSettings"
+    WHERE "settings_id" = 1
+  </select>
+
+  <insert id="upsert" parameterType="com.example.demo.domain.AppRuntimeSettingsRecord">
+    INSERT INTO "AppRuntimeSettings" (
+      "settings_id",
+      "privacy_consent",
+      "addiction_monitor_enabled",
+      "updated_at"
+    ) VALUES (
+      1,
+      #{privacyConsent},
+      #{addictionMonitorEnabled},
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT ("settings_id") DO UPDATE SET
+      "privacy_consent" = EXCLUDED."privacy_consent",
+      "addiction_monitor_enabled" = EXCLUDED."addiction_monitor_enabled",
+      "updated_at" = CURRENT_TIMESTAMP
+  </insert>
+
+</mapper>

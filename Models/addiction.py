@@ -104,20 +104,38 @@ CONFIG = {
 # ─────────────────────────────────────────
 # MediaPipe 초기화
 # ─────────────────────────────────────────
-mp_face_mesh = mp.solutions.face_mesh
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
+mp_face_mesh = None
+mp_pose = None
+mp_drawing = None
+face_mesh = None
+pose = None
 
-face_mesh = mp_face_mesh.FaceMesh(
-    max_num_faces=1,
-    refine_landmarks=True,              # 동공 랜드마크(468~477) 활성화 - 거리 측정에 필요
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
-pose = mp_pose.Pose(
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5
-)
+
+def initialize_mediapipe():
+    global mp_face_mesh, mp_pose, mp_drawing, face_mesh, pose
+
+    if face_mesh is not None and pose is not None:
+        return
+
+    if not hasattr(mp, "solutions"):
+        raise RuntimeError(
+            "mediapipe.solutions를 사용할 수 없습니다. metadata-only 모드가 아닌 경우 "
+            "호환되는 mediapipe 환경이 필요합니다."
+        )
+
+    mp_face_mesh = mp.solutions.face_mesh
+    mp_pose = mp.solutions.pose
+    mp_drawing = mp.solutions.drawing_utils
+    face_mesh = mp_face_mesh.FaceMesh(
+        max_num_faces=1,
+        refine_landmarks=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
+    pose = mp_pose.Pose(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
 
 # ─────────────────────────────────────────
 # [신규] Head Pose 추정용 3D 얼굴 기준점
@@ -1104,6 +1122,8 @@ def main():
         else:
             print("[INFO] metadata-only mode enabled with no YouTube URL.")
         return
+
+    initialize_mediapipe()
 
     cap = cv2.VideoCapture(args.camera_index)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  CONFIG["display_width"])

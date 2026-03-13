@@ -8,14 +8,14 @@ group = 'com.example'
 version = '0.0.1-SNAPSHOT'
 description = 'Demo project for Spring Boot'
 
-def javaVersion = JavaLanguageVersion.of(21)
+def javaVersion = JavaLanguageVersion.of(24)
 
 java {
 	toolchain {
 		languageVersion = javaVersion
 	}
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
+	sourceCompatibility = JavaVersion.VERSION_24
+	targetCompatibility = JavaVersion.VERSION_24
 }
 
 repositories {
@@ -25,13 +25,14 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.4'
-	runtimeOnly 'com.oracle.database.jdbc:ojdbc11'
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	runtimeOnly 'org.postgresql:postgresql'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.withType(JavaCompile).configureEach {
-	options.release = 21
+	options.release = 24
 }
 
 tasks.named('bootRun') {

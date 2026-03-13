@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.repository.AnalysisHistoryMapper">
+
+  <resultMap id="analysisHistoryResultMap" type="com.example.demo.dto.AnalysisHistoryResponse">
+    <id property="analysisId" column="analysis_id" />
+    <result property="inputUrl" column="input_url" />
+    <result property="videoId" column="video_id" />
+    <result property="title" column="title" />
+    <result property="categoryNameKo" column="category_name_ko" />
+    <result property="durationSeconds" column="duration_seconds" />
+    <result property="shortForm" column="is_short_form" />
+    <result property="blockedByCategory" column="blocked_by_category" />
+    <result property="hasViolence" column="has_violence" />
+    <result property="violenceScore" column="violence_score" />
+    <result property="violencePositiveWindows" column="violence_positive_windows" />
+    <result property="hasNudity" column="has_nudity" />
+    <result property="nudityMatchCount" column="nudity_match_count" />
+    <result property="harmful" column="harmful" />
+    <result property="harmfulReasonsJson" column="harmful_reasons_json" />
+    <result property="status" column="status" />
+    <result property="errorMessage" column="error_message" />
+    <result property="createdAt" column="created_at" />
+  </resultMap>
+
+  <insert id="insert" parameterType="com.example.demo.domain.AnalysisHistoryRecord" useGeneratedKeys="true" keyProperty="analysisId" keyColumn="analysis_id">
+    INSERT INTO "AnalysisHistory" (
+      "input_url",
+      "video_id",
+      "title",
+      "category_name_ko",
+      "duration_seconds",
+      "is_short_form",
+      "blocked_by_category",
+      "has_violence",
+      "violence_score",
+      "violence_positive_windows",
+      "has_nudity",
+      "nudity_match_count",
+      "harmful",
+      "harmful_reasons_json",
+      "status",
+      "error_message",
+      "created_at"
+    ) VALUES (
+      #{inputUrl},
+      #{videoId},
+      #{title},
+      #{categoryNameKo},
+      #{durationSeconds},
+      #{shortForm},
+      #{blockedByCategory},
+      #{hasViolence},
+      #{violenceScore},
+      #{violencePositiveWindows},
+      #{hasNudity},
+      #{nudityMatchCount},
+      #{harmful},
+      #{harmfulReasonsJson},
+      #{status},
+      #{errorMessage},
+      #{createdAt}
+    )
+  </insert>
+
+  <select id="findRecent" resultMap="analysisHistoryResultMap">
+    SELECT
+      "analysis_id" AS analysis_id,
+      "input_url" AS input_url,
+      "video_id" AS video_id,
+      "title" AS title,
+      "category_name_ko" AS category_name_ko,
+      "duration_seconds" AS duration_seconds,
+      "is_short_form" AS is_short_form,
+      "blocked_by_category" AS blocked_by_category,
+      "has_violence" AS has_violence,
+      "violence_score" AS violence_score,
+      "violence_positive_windows" AS violence_positive_windows,
+      "has_nudity" AS has_nudity,
+      "nudity_match_count" AS nudity_match_count,
+      "harmful" AS harmful,
+      "harmful_reasons_json" AS harmful_reasons_json,
+      "status" AS status,
+      "error_message" AS error_message,
+      "created_at" AS created_at
+    FROM "AnalysisHistory"
+    ORDER BY "created_at" DESC, "analysis_id" DESC
+    LIMIT #{limit}
+  </select>
+
+</mapper>

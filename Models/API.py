@@ -1,6 +1,5 @@
 import argparse
 import json
-import locale
 import logging
 import os
 import re
@@ -541,10 +540,9 @@ def build_parser():
 
 def main():
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(
-            encoding=locale.getpreferredencoding(False),
-            errors="replace",
-        )
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     parser = build_parser()
     args = parser.parse_args()
