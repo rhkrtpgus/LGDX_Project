@@ -6,6 +6,8 @@ import type { QuickApp } from '../data/home'
 type AppDockProps = {
   apps: QuickApp[]
   activeAppId: string
+  eyebrow: string
+  title: string
   onFocusApp: (app: QuickApp) => void
   onLaunchApp: (app: QuickApp) => void
 }
@@ -47,6 +49,8 @@ function AppTile({ app, isActive, onFocusApp, onLaunchApp }: AppTileProps) {
 export function AppDock({
   apps,
   activeAppId,
+  eyebrow,
+  title,
   onFocusApp,
   onLaunchApp,
 }: AppDockProps) {
@@ -60,8 +64,8 @@ export function AppDock({
     <FocusContext.Provider value={focusKey}>
       <section ref={ref} className={`dock-panel ${hasFocusedChild ? 'has-focused-child' : ''}`}>
         <div className="section-heading">
-          <span className="section-heading__eyebrow">Quick Launch</span>
-          <h2>Favorite Apps</h2>
+          <span className="section-heading__eyebrow">{eyebrow}</span>
+          <h2>{title}</h2>
         </div>
 
         <div className="app-dock">

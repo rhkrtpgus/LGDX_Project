@@ -66,11 +66,11 @@ export function Sidebar({ items, activeId, onSelect }: SidebarProps) {
         <div className="sidebar__brand">
           <span className="sidebar__brand-mark">LGDX</span>
           <span className={`sidebar__brand-copy ${hasFocusedChild ? 'is-visible' : ''}`}>
-            Living display shell
+            리빙 디스플레이 허브
           </span>
         </div>
 
-        <nav className="sidebar__nav" aria-label="Main navigation">
+        <nav className="sidebar__nav" aria-label="주요 탐색">
           {items.map((item) => (
             <SidebarButton
               key={item.id}
@@ -83,7 +83,7 @@ export function Sidebar({ items, activeId, onSelect }: SidebarProps) {
         </nav>
 
         <div className={`sidebar__footer ${hasFocusedChild ? 'is-visible' : ''}`}>
-          Remote: arrows / enter / back
+          리모컨: 방향키 / 확인 / 뒤로
         </div>
       </motion.aside>
     </FocusContext.Provider>

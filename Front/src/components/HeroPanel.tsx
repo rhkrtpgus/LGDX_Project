@@ -5,12 +5,16 @@ import { FocusButton } from './FocusButton'
 
 type HeroPanelProps = {
   spotlight: Spotlight
+  primaryLabel: string
+  secondaryLabel: string
   onPrimaryAction: () => void
   onSecondaryAction: () => void
 }
 
 export function HeroPanel({
   spotlight,
+  primaryLabel,
+  secondaryLabel,
   onPrimaryAction,
   onSecondaryAction,
 }: HeroPanelProps) {
@@ -66,14 +70,10 @@ export function HeroPanel({
           ) : null}
 
           <div className="hero-panel__actions">
-            <FocusButton
-              focusKey="HERO_PRIMARY"
-              label="Play Now"
-              onActivate={onPrimaryAction}
-            />
+            <FocusButton focusKey="HERO_PRIMARY" label={primaryLabel} onActivate={onPrimaryAction} />
             <FocusButton
               focusKey="HERO_SECONDARY"
-              label="Details"
+              label={secondaryLabel}
               variant="secondary"
               onActivate={onSecondaryAction}
             />

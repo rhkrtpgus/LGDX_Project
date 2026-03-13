@@ -80,7 +80,7 @@ export function ContentRow({ row, onPreview, onActivate }: ContentRowProps) {
     <FocusContext.Provider value={focusKey}>
       <section ref={ref} className={`content-row ${hasFocusedChild ? 'has-focused-child' : ''}`}>
         <div className="section-heading">
-          <span className="section-heading__eyebrow">Curated Rail</span>
+          <span className="section-heading__eyebrow">추천 라인</span>
           <h2>{row.title}</h2>
           <p>{row.description}</p>
         </div>
