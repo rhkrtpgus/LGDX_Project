@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
-import sys
 import uuid
 
 from app.core.config import get_settings
@@ -40,6 +39,30 @@ def build_disabled_monitor_result(
     )
 
 
+def _build_monitor_result_from_session(
+    *,
+    runtime_settings: RuntimeSettingsResponse,
+    session: dict,
+    message: str,
+) -> AddictionMonitorResult:
+    session_id = str(session.get("session_id"))
+    summary = session.get("summary", {})
+    telemetry_samples = count_monitor_telemetry(session_id)
+
+    return AddictionMonitorResult(
+        enabled=runtime_settings.addiction_monitor_enabled,
+        consentGranted=runtime_settings.privacy_consent,
+        executed=True,
+        status=str(session.get("status", "FAILED")),
+        message=message,
+        sessionId=session_id,
+        telemetrySamples=telemetry_samples,
+        finalRiskScore=summary.get("final_risk_score"),
+        finalRiskLevel=summary.get("final_risk_level"),
+        watchSeconds=session.get("watch_seconds"),
+    )
+
+
 def run_addiction_monitor(
     *,
     video_url: str,
@@ -68,7 +91,7 @@ def run_addiction_monitor(
 
     session_id = build_monitor_session_id()
     command = [
-        sys.executable,
+        settings.addiction_monitor_python_command,
         str(ADDICTION_SCRIPT),
         "--youtube-url",
         video_url,
@@ -116,11 +139,25 @@ def run_addiction_monitor(
             or completed.stdout.strip()
             or "addiction.py exited with a non-zero status."
         )
+        session = get_monitor_session_by_analysis_id(analysis_id)
+        if session:
+            return _build_monitor_result_from_session(
+                runtime_settings=runtime_settings,
+                session=session,
+                message=message,
+            )
         raise AddictionMonitorError(message)
 
     session = get_monitor_session_by_analysis_id(analysis_id)
+    if session:
+        return _build_monitor_result_from_session(
+            runtime_settings=runtime_settings,
+            session=session,
+            message=f"addiction.py stored monitor data in MongoDB session {session_id}.",
+        )
+
     telemetry_samples = count_monitor_telemetry(session_id)
-    summary = (session or {}).get("summary", {})
+    summary = {}
 
     return AddictionMonitorResult(
         enabled=True,
@@ -153,22 +190,11 @@ def fetch_addiction_monitor_result(
             message="No addiction monitor session was found for this analysis.",
         )
 
-    session_id = str(session.get("session_id"))
-    summary = session.get("summary", {})
-    telemetry_samples = count_monitor_telemetry(session_id)
-
-    return AddictionMonitorResult(
-        enabled=runtime_settings.addiction_monitor_enabled,
-        consentGranted=runtime_settings.privacy_consent,
-        executed=True,
-        status=str(session.get("status", "COMPLETED")),
+    return _build_monitor_result_from_session(
+        runtime_settings=runtime_settings,
+        session=session,
         message=(
-            f"MongoDB session {session_id} contains "
-            f"{telemetry_samples} telemetry sample(s)."
+            f"MongoDB session {session.get('session_id')} contains "
+            f"{count_monitor_telemetry(str(session.get('session_id')))} telemetry sample(s)."
         ),
-        sessionId=session_id,
-        telemetrySamples=telemetry_samples,
-        finalRiskScore=summary.get("final_risk_score"),
-        finalRiskLevel=summary.get("final_risk_level"),
-        watchSeconds=session.get("watch_seconds"),
     )

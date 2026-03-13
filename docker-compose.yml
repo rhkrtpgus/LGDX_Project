@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: lgdx-postgres
+    environment:
+      POSTGRES_DB: lgdx
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+    ports:
+      - "3355:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lgdx"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:8
+    container_name: lgdx-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'db.runCommand({ ping: 1 }).ok' | mongosh --quiet mongodb://localhost:27017/test | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  back:
+    build:
+      context: ./Back
+      dockerfile: Dockerfile
+    container_name: lgdx-back
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: lgdx
+      DB_USERNAME: postgres
+      DB_PASSWORD: 12345
+      MODEL_PYTHON_COMMAND: python
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: FastAPI/Dockerfile
+    container_name: lgdx-fastapi
+    environment:
+      APP_NAME: LGDX FastAPI
+      APP_VERSION: 0.1.0
+      APP_DEBUG: "false"
+      API_PREFIX: /fastapi
+      CORS_ALLOW_ALL: "true"
+      POSTGRES_URL: postgresql://postgres:12345@postgres:5432/lgdx
+      MONGODB_URL: mongodb://mongo:27017
+      MONGODB_DATABASE: lgdx_monitor
+      MODEL_TIMEOUT_SECONDS: 900
+      ADDICTION_MONITOR_PYTHON_COMMAND: python
+      ADDICTION_MONITOR_MAX_SECONDS: 5
+      ADDICTION_MONITOR_CAMERA_INDEX: 0
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: infra/nginx/Dockerfile
+    container_name: lgdx-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      back:
+        condition: service_started
+      fastapi:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongo_data:

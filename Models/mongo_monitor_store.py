@@ -225,3 +225,38 @@ class MongoMonitorStore:
             upsert=True,
         )
 
+    def mark_session_failed(self, state: Any, *, reason: str) -> None:
+        if not self.enabled:
+            return
+
+        now = utc_now_iso()
+        self._sessions().update_one(
+            {"session_id": state.session_id},
+            {
+                "$setOnInsert": {
+                    "session_id": state.session_id,
+                    "analysis_id": state.analysis_id,
+                    "user_id": state.user_id,
+                    "child_id": state.child_id,
+                    "started_at": now,
+                    "created_at": now,
+                },
+                "$set": {
+                    "video": {
+                        "input_url": state.youtube_url,
+                        "video_id": state.youtube_video_id,
+                        "title": state.youtube_title,
+                        "category_name_en": state.youtube_category_en,
+                        "category_name_ko": state.youtube_category_ko,
+                        "duration_seconds": state.youtube_duration_seconds,
+                        "is_short_form": state.youtube_is_short_form,
+                    },
+                    "status": "FAILED",
+                    "error_message": reason,
+                    "watch_seconds": state.watch_time,
+                    "ended_at": now,
+                    "updated_at": now,
+                },
+            },
+            upsert=True,
+        )

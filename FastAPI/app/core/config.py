@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import sys
 
 from dotenv import load_dotenv
 
@@ -21,6 +22,7 @@ class Settings:
     mongodb_url: str
     mongodb_database: str
     model_timeout_seconds: int
+    addiction_monitor_python_command: str
     addiction_monitor_max_seconds: int
     addiction_monitor_camera_index: int
 
@@ -59,6 +61,10 @@ def get_settings() -> Settings:
         mongodb_url=os.getenv("MONGODB_URL", "mongodb://localhost:27017"),
         mongodb_database=os.getenv("MONGODB_DATABASE", "lgdx_monitor"),
         model_timeout_seconds=int(os.getenv("MODEL_TIMEOUT_SECONDS", "900")),
+        addiction_monitor_python_command=os.getenv(
+            "ADDICTION_MONITOR_PYTHON_COMMAND",
+            sys.executable,
+        ),
         addiction_monitor_max_seconds=int(
             os.getenv("ADDICTION_MONITOR_MAX_SECONDS", "5")
         ),

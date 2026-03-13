@@ -36,6 +36,18 @@ VIOLENCE_WINDOW_SIZE = 64
 VIOLENCE_WINDOW_STRIDE = 32
 VIOLENCE_MIN_WINDOW_SCORE = 0.95
 VIOLENCE_MIN_POSITIVE_WINDOWS = 4
+STREAM_FORMAT_CANDIDATES = [
+    (
+        "best[protocol*=http][ext=mp4]/"
+        "best[ext=mp4]/"
+        "best[protocol*=http]/"
+        "best"
+    ),
+    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    "bv*[ext=mp4]+ba/bv*+ba/b",
+    "18/22/best",
+    None,
+]
 
 BLOCKED_CATEGORIES = {
     "Film & Animation",
@@ -334,25 +346,71 @@ def filter_category(category_name_en: str, category_name_ko: str) -> CategoryFil
 
 
 def get_stream_url(video_url: str) -> str:
-    ydl_opts = {
+    base_opts = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "format": (
-            "best[protocol*=http][ext=mp4]/"
-            "best[ext=mp4]/"
-            "best[protocol*=http]/"
-            "best"
-        ),
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web", "tv"],
+            }
+        },
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=False)
+    last_error = None
+
+    for format_selector in STREAM_FORMAT_CANDIDATES:
+        ydl_opts = dict(base_opts)
+        if format_selector:
+            ydl_opts["format"] = format_selector
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+        except yt_dlp.utils.DownloadError as exc:
+            last_error = exc
+            if "Requested format is not available" in str(exc):
+                logger.warning(
+                    "yt-dlp format fallback triggered for %s with selector %s",
+                    video_url,
+                    format_selector or "<default>",
+                )
+                continue
+            raise
+
         stream_url = info.get("url")
-        if not stream_url:
-            raise ValueError("Failed to extract streaming URL from yt-dlp result")
-        logger.info("Resolved streaming URL from yt-dlp")
-        return stream_url
+        if stream_url:
+            logger.info(
+                "Resolved streaming URL from yt-dlp using selector %s",
+                format_selector or "<default>",
+            )
+            return stream_url
+
+        requested_formats = info.get("requested_formats") or []
+        for requested_format in requested_formats:
+            if requested_format.get("vcodec") != "none" and requested_format.get("url"):
+                logger.info(
+                    "Resolved video stream URL from yt-dlp requested formats using selector %s",
+                    format_selector or "<default>",
+                )
+                return requested_format["url"]
+
+        formats = info.get("formats") or []
+        for candidate in formats:
+            if candidate.get("vcodec") == "none":
+                continue
+            candidate_url = candidate.get("url")
+            if candidate_url:
+                logger.info(
+                    "Resolved fallback stream URL from yt-dlp formats using selector %s",
+                    format_selector or "<default>",
+                )
+                return candidate_url
+
+    if last_error is not None:
+        raise ValueError(str(last_error)) from last_error
+
+    raise ValueError("Failed to extract streaming URL from yt-dlp result")
 
 
 def sample_stream_frames(

@@ -142,6 +142,25 @@ def initialize_mediapipe():
         min_tracking_confidence=0.5
     )
 
+
+def fail_monitor_run(mongo_store, state, *, event_type: str, message: str, metrics=None):
+    print(message)
+    if mongo_store is None:
+        return
+
+    try:
+        mongo_store.upsert_session_start(state)
+        mongo_store.insert_event(
+            state,
+            event_type=event_type,
+            event_level="ERROR",
+            message=message,
+            metrics=metrics,
+        )
+        mongo_store.mark_session_failed(state, reason=message)
+    except Exception as exc:
+        print(f"[WARN] Failed to persist MongoDB failure event: {exc}")
+
 # ─────────────────────────────────────────
 # [신규] Head Pose 추정용 3D 얼굴 기준점
 # 실제 얼굴 좌표계 (mm 단위, 정면 기준 원점)
@@ -1223,14 +1242,43 @@ def main():
             print("[INFO] metadata-only mode enabled with no YouTube URL.")
         return
 
-    initialize_mediapipe()
+    if args.youtube_url:
+        try:
+            youtube_context = fetch_youtube_video_context(args.youtube_url)
+            state.apply_youtube_context(youtube_context)
+        except Exception as exc:
+            print(f"[WARN] Could not preload YouTube metadata before monitor startup: {exc}")
+
+    if mongo_store is not None:
+        try:
+            mongo_store.upsert_session_start(state)
+        except Exception as exc:
+            print(f"[WARN] Failed to initialize MongoDB session document: {exc}")
+            mongo_store = None
+
+    try:
+        initialize_mediapipe()
+    except Exception as exc:
+        fail_monitor_run(
+            mongo_store,
+            state,
+            event_type="mediapipe_init_failed",
+            message=f"[ERROR] MediaPipe initialization failed: {exc}",
+        )
+        return
 
     cap = cv2.VideoCapture(args.camera_index)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  CONFIG["display_width"])
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CONFIG["display_height"])
 
     if not cap.isOpened():
-        print("[ERROR] 카메라를 열 수 없습니다.")
+        fail_monitor_run(
+            mongo_store,
+            state,
+            event_type="camera_open_failed",
+            message="[ERROR] Camera could not be opened.",
+            metrics={"camera_index": args.camera_index},
+        )
         return
 
     # [신규] CSV 초기화
@@ -1253,7 +1301,7 @@ def main():
     if args.show_preview and args.mask_face_preview:
         print("[INFO] Demo mode: 프리뷰 창에서 얼굴 마스킹을 적용합니다.")
 
-    if args.youtube_url:
+    if args.youtube_url and not state.youtube_url:
         try:
             youtube_context = fetch_youtube_video_context(args.youtube_url)
             state.apply_youtube_context(youtube_context)
