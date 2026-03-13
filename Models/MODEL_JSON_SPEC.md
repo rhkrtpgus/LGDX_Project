@@ -493,9 +493,9 @@ MongoDB에는 시계열 원본값을 아래 형식으로 저장하는 것을 권
 
 현재 프런트는 `Front/src/lib/api.ts` 기준으로 아래 응답을 직접 기대한다.
 
-- `POST /api/analysis/youtube`
+- `POST /fastapi/analysis/youtube`
   - 본 문서의 `3.4 FastAPI 응답 스펙`
-- `GET /api/analysis/history`
+- `GET /fastapi/analysis/history`
   - `3.4` 구조의 배열
 
 즉, FastAPI는 Python raw 결과를 그대로 프런트에 넘기지 말고 아래처럼 매핑해야 한다.

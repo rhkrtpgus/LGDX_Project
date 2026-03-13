@@ -21,6 +21,11 @@ export type AddictionMonitorResult = {
   executed: boolean
   status: string
   message: string
+  sessionId?: string | null
+  telemetrySamples?: number | null
+  finalRiskScore?: number | null
+  finalRiskLevel?: string | null
+  watchSeconds?: number | null
 }
 
 export type RuntimeSettings = {
@@ -157,6 +162,21 @@ export type AdminOverview = {
   recentAlerts: ParentAlert[]
 }
 
+function normalizeBaseUrl(value: string) {
+  if (!value) {
+    return ''
+  }
+
+  return value.endsWith('/') ? value.slice(0, -1) : value
+}
+
+const javaApiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_JAVA_API_BASE_URL ?? '/api')
+const fastapiApiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_FASTAPI_API_BASE_URL ?? '/fastapi')
+
+function buildUrl(baseUrl: string, path: string) {
+  return `${baseUrl}${path}`
+}
+
 async function request<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     headers: {
@@ -167,71 +187,73 @@ async function request<T>(input: string, init?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    throw new Error(`API 요청 실패: ${response.status}`)
+    throw new Error(`API request failed: ${response.status}`)
   }
 
   return response.json() as Promise<T>
 }
 
 export function fetchDashboardOverview() {
-  return request<DashboardOverview>('/api/dashboard/overview')
+  return request<DashboardOverview>(buildUrl(javaApiBaseUrl, '/dashboard/overview'))
 }
 
 export function fetchAnalysisHistory(limit = 5) {
-  return request<AnalysisResult[]>(`/api/analysis/history?limit=${limit}`)
+  return request<AnalysisResult[]>(buildUrl(fastapiApiBaseUrl, `/analysis/history?limit=${limit}`))
 }
 
 export function analyzeYoutubeVideo(videoUrl: string, childId?: number | null) {
-  return request<AnalysisResult>('/api/analysis/youtube', {
+  return request<AnalysisResult>(buildUrl(fastapiApiBaseUrl, '/analysis/youtube'), {
     method: 'POST',
     body: JSON.stringify({ videoUrl, childId }),
   })
 }
 
 export function fetchRuntimeSettings() {
-  return request<RuntimeSettings>('/api/settings/runtime')
+  return request<RuntimeSettings>(buildUrl(javaApiBaseUrl, '/settings/runtime'))
 }
 
 export function updateRuntimeSettings(payload: Partial<RuntimeSettings>) {
-  return request<RuntimeSettings>('/api/settings/runtime', {
+  return request<RuntimeSettings>(buildUrl(javaApiBaseUrl, '/settings/runtime'), {
     method: 'PATCH',
     body: JSON.stringify(payload),
   })
 }
 
 export function fetchSystemHealth() {
-  return request<SystemHealth>('/api/system/health')
+  return request<SystemHealth>(buildUrl(fastapiApiBaseUrl, '/system/health'))
 }
 
 export function fetchReportFamilies() {
-  return request<ReportFamily[]>('/api/report/families')
+  return request<ReportFamily[]>(buildUrl(javaApiBaseUrl, '/report/families'))
 }
 
 export function fetchMobileReport(familyId: number) {
-  return request<MobileReport>(`/api/report/mobile?familyId=${familyId}`)
+  return request<MobileReport>(buildUrl(javaApiBaseUrl, `/report/mobile?familyId=${familyId}`))
 }
 
 export function fetchParentOverview(familyId: number) {
-  return request<ParentOverview>(`/api/parent/overview?familyId=${familyId}`)
+  return request<ParentOverview>(buildUrl(javaApiBaseUrl, `/parent/overview?familyId=${familyId}`))
 }
 
 export function fetchParentChildren(familyId: number) {
-  return request<ParentChild[]>(`/api/parent/children?familyId=${familyId}`)
+  return request<ParentChild[]>(buildUrl(javaApiBaseUrl, `/parent/children?familyId=${familyId}`))
 }
 
 export function fetchChildWatchPolicy(childId: number) {
-  return request<ChildWatchPolicy>(`/api/parent/watch-policy?childId=${childId}`)
+  return request<ChildWatchPolicy>(buildUrl(javaApiBaseUrl, `/parent/watch-policy?childId=${childId}`))
 }
 
 export function updateChildWatchPolicy(payload: Partial<ChildWatchPolicy> & { childId: number }) {
-  return request<ChildWatchPolicy>('/api/parent/watch-policy', {
+  return request<ChildWatchPolicy>(buildUrl(javaApiBaseUrl, '/parent/watch-policy'), {
     method: 'PATCH',
     body: JSON.stringify(payload),
   })
 }
 
 export function fetchParentAlerts(familyId: number, limit = 12) {
-  return request<ParentAlert[]>(`/api/parent/alerts?familyId=${familyId}&limit=${limit}`)
+  return request<ParentAlert[]>(
+    buildUrl(javaApiBaseUrl, `/parent/alerts?familyId=${familyId}&limit=${limit}`),
+  )
 }
 
 export function fetchViewingHistory(familyId: number, childId?: number | null, limit = 12) {
@@ -244,9 +266,11 @@ export function fetchViewingHistory(familyId: number, childId?: number | null, l
     params.set('childId', String(childId))
   }
 
-  return request<ViewingHistoryItem[]>(`/api/parent/viewing-history?${params.toString()}`)
+  return request<ViewingHistoryItem[]>(
+    buildUrl(javaApiBaseUrl, `/parent/viewing-history?${params.toString()}`),
+  )
 }
 
 export function fetchAdminOverview() {
-  return request<AdminOverview>('/api/admin/overview')
+  return request<AdminOverview>(buildUrl(javaApiBaseUrl, '/admin/overview'))
 }

@@ -1,15 +1,13 @@
 # FastAPI Backend
 
-기본 FastAPI 프로젝트다.
+Current routes:
 
-현재 포함 범위:
+- `/fastapi/system/health`
+- `/fastapi/analysis/youtube`
+- `/fastapi/analysis/history`
+- `/fastapi/settings/runtime`
 
-- `/api/system/health`
-- `/api/analysis/youtube`
-- `Models/API.py` 래퍼 서비스
-- PostgreSQL, MongoDB 설정 자리
-
-## 실행
+Run locally:
 
 ```powershell
 cd c:\Users\4121\Desktop\DX\LGDX_Project\FastAPI
@@ -19,9 +17,8 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## 다음 단계
+Environment:
 
-1. PostgreSQL insert 구현
-2. MongoDB telemetry insert 구현
-3. `addiction.py` 실행/수집 API 구현
-4. Front 프록시와 `/api` 계약 정렬
+- Copy `.env.example` to `.env`
+- Set `API_PREFIX=/fastapi`
+- Set `CORS_ALLOW_ALL=true` only when you need an emergency wide-open CORS fallback

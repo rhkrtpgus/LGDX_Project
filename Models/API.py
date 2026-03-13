@@ -124,8 +124,33 @@ class AnalysisResult:
     nudity_matches: list[dict] = field(default_factory=list)
 
 
+def _normalize_json_value(value):
+    if isinstance(value, dict):
+        return {str(key): _normalize_json_value(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json_value(item) for item in value]
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    if hasattr(value, "item") and callable(value.item):
+        try:
+            return _normalize_json_value(value.item())
+        except Exception:
+            pass
+
+    if hasattr(value, "tolist") and callable(value.tolist):
+        try:
+            return _normalize_json_value(value.tolist())
+        except Exception:
+            pass
+
+    return str(value)
+
+
 def serialize_analysis_result(result: AnalysisResult) -> dict:
-    return asdict(result)
+    return _normalize_json_value(asdict(result))
 
 
 def build_analysis_history_payload(
@@ -140,14 +165,14 @@ def build_analysis_history_payload(
         "video_id": result.video_id,
         "title": result.title,
         "category_name_ko": result.category_name_ko,
-        "duration_seconds": result.duration_seconds,
+        "duration_seconds": int(result.duration_seconds),
         "is_short_form": result.is_short_form,
         "blocked_by_category": result.category_filter.is_blocked,
         "has_violence": result.has_violence,
-        "violence_score": result.violence_score,
-        "violence_positive_windows": result.violence_positive_windows,
+        "violence_score": float(result.violence_score),
+        "violence_positive_windows": int(result.violence_positive_windows),
         "has_nudity": result.has_nudity,
-        "nudity_match_count": result.nudity_match_count,
+        "nudity_match_count": int(result.nudity_match_count),
         "harmful": bool(result.harmful_reasons),
         "harmful_reasons_json": json.dumps(result.harmful_reasons, ensure_ascii=False),
         "status": status,

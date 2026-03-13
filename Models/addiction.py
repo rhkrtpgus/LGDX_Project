@@ -1171,6 +1171,12 @@ def build_parser():
         default=CONFIG["mongo_database"],
         help="MongoDB database name.",
     )
+    parser.add_argument(
+        "--max-seconds",
+        type=int,
+        default=0,
+        help="Maximum runtime in seconds before the monitor exits automatically.",
+    )
     return parser
 
 
@@ -1271,6 +1277,10 @@ def main():
             mongo_store = None
 
     while True:
+        if args.max_seconds > 0 and state.watch_time >= args.max_seconds:
+            print(f"[INFO] Max runtime reached: {args.max_seconds}s")
+            break
+
         ret, frame = cap.read()
         if not ret:
             time.sleep(0.05)
