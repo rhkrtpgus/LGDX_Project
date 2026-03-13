@@ -20,4 +20,14 @@ public interface ReportMapper {
 	String findFamilyNameByFamilyId(@Param("familyId") int familyId);
 
 	List<ReportFamilyResponse> findFamilies();
+
+	Integer sumWatchMinutesSince(
+		@Param("familyId") int familyId,
+		@Param("days") int days
+	);
+
+	Integer countAlertsSince(
+		@Param("familyId") int familyId,
+		@Param("days") int days
+	);
 }

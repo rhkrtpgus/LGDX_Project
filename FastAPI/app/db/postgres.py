@@ -142,6 +142,30 @@ def get_analysis_history_by_id(analysis_id: int) -> dict | None:
     return row
 
 
+def get_child_watch_policy(child_id: int) -> dict | None:
+    query = """
+        select
+          child_id,
+          daily_limit_minutes,
+          weekday_start_hour,
+          weekday_end_hour,
+          weekend_start_hour,
+          weekend_end_hour,
+          notification_threshold,
+          auto_block_enabled,
+          updated_at
+        from child_watch_policy
+        where child_id = %(child_id)s
+    """
+
+    with get_postgres_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, {"child_id": child_id})
+            row = cursor.fetchone()
+
+    return row
+
+
 def get_runtime_settings() -> dict:
     query = """
         select

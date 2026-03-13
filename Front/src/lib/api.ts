@@ -82,6 +82,13 @@ export type ReportPeriod = {
   period: string
   compareTime: number | null
   countAlertType: number | null
+  currentWatchMinutes: number | null
+  watchDeltaMinutes: number | null
+  watchDeltaPercent: number | null
+  currentAlertCount: number | null
+  alertDeltaCount: number | null
+  watchSummary: string | null
+  alertSummary: string | null
 }
 
 export type MobileReport = {

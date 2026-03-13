@@ -737,6 +737,91 @@
   margin-top: 1rem;
 }
 
+.settings-inline-selects,
+.settings-report-layout,
+.settings-report-card__stats {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-inline-selects {
+  grid-template-columns: repeat(2, minmax(0, 12rem));
+  margin: 1rem 0;
+}
+
+.settings-report-layout {
+  margin-top: 1rem;
+}
+
+.settings-report-card {
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-report-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-report-card__header strong,
+.settings-report-card__metric {
+  color: var(--text);
+}
+
+.settings-report-card__tone {
+  display: inline-flex;
+  padding: 0.28rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.settings-report-card__tone--idle {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-soft);
+}
+
+.settings-report-card__tone--up {
+  background: rgba(255, 124, 124, 0.14);
+  color: #ffb6b6;
+}
+
+.settings-report-card__tone--down {
+  background: rgba(121, 217, 129, 0.14);
+  color: #bff6c4;
+}
+
+.settings-report-card__stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0.9rem;
+}
+
+.settings-report-card__summary {
+  margin-top: 0.85rem;
+}
+
+.settings-report-card__summary p {
+  margin: 0.35rem 0 0;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.settings-report-card__metric--up {
+  color: #ffb6b6;
+}
+
+.settings-report-card__metric--down {
+  color: #bff6c4;
+}
+
+.settings-report-card__metric--idle {
+  color: var(--text);
+}
+
 .analysis-history__item {
   padding: 1rem;
 }
@@ -1908,6 +1993,8 @@
   .app-dock,
   .health-runtime,
   .report-grid,
+  .settings-inline-selects,
+  .settings-report-card__stats,
   .dashboard-grid,
   .minimal-core-grid {
     grid-template-columns: 1fr;

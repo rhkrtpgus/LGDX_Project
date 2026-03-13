@@ -54,4 +54,20 @@
     order by user_id asc
   </select>
 
+  <select id="sumWatchMinutesSince" resultType="int">
+    select coalesce(sum(watch_duration), 0) / 60
+    from viewing_history
+    where user_id = #{familyId}
+      and watch_time >= current_timestamp - (#{days} * interval '1 day')
+  </select>
+
+  <select id="countAlertsSince" resultType="int">
+    select count(*)
+    from alert_log a
+    join viewing_history v
+      on v.viewing_id = a.viewing_id
+    where v.user_id = #{familyId}
+      and v.watch_time >= current_timestamp - (#{days} * interval '1 day')
+  </select>
+
 </mapper>
