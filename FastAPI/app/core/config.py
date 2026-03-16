@@ -53,7 +53,10 @@ def get_settings() -> Settings:
         debug=_read_bool("APP_DEBUG", True),
         api_prefix=_read_prefix("API_PREFIX", "/fastapi"),
         cors_allow_all=_read_bool("CORS_ALLOW_ALL", False),
-        cors_origins=_read_list("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
+        cors_origins=_read_list(
+            "CORS_ORIGINS",
+            "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://localhost:4174,http://127.0.0.1:4174",
+        ),
         postgres_url=os.getenv(
             "POSTGRES_URL",
             "postgresql://postgres:12345@localhost:3355/lgdx",
@@ -66,7 +69,7 @@ def get_settings() -> Settings:
             sys.executable,
         ),
         addiction_monitor_max_seconds=int(
-            os.getenv("ADDICTION_MONITOR_MAX_SECONDS", "5")
+            os.getenv("ADDICTION_MONITOR_MAX_SECONDS", "300")
         ),
         addiction_monitor_camera_index=int(
             os.getenv("ADDICTION_MONITOR_CAMERA_INDEX", "0")

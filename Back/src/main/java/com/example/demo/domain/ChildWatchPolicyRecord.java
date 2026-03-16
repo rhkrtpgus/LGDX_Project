@@ -10,6 +10,15 @@ public class ChildWatchPolicyRecord {
 	private Integer weekdayEndHour;
 	private Integer weekendStartHour;
 	private Integer weekendEndHour;
+	private Boolean bedtimeLockEnabled;
+	private Integer bedtimeHour;
+	private Integer mondayLimitMinutes;
+	private Integer tuesdayLimitMinutes;
+	private Integer wednesdayLimitMinutes;
+	private Integer thursdayLimitMinutes;
+	private Integer fridayLimitMinutes;
+	private Integer saturdayLimitMinutes;
+	private Integer sundayLimitMinutes;
 	private Integer notificationThreshold;
 	private Boolean autoBlockEnabled;
 	private LocalDateTime updatedAt;
@@ -60,6 +69,78 @@ public class ChildWatchPolicyRecord {
 
 	public void setWeekendEndHour(Integer weekendEndHour) {
 		this.weekendEndHour = weekendEndHour;
+	}
+
+	public Boolean getBedtimeLockEnabled() {
+		return bedtimeLockEnabled;
+	}
+
+	public void setBedtimeLockEnabled(Boolean bedtimeLockEnabled) {
+		this.bedtimeLockEnabled = bedtimeLockEnabled;
+	}
+
+	public Integer getBedtimeHour() {
+		return bedtimeHour;
+	}
+
+	public void setBedtimeHour(Integer bedtimeHour) {
+		this.bedtimeHour = bedtimeHour;
+	}
+
+	public Integer getMondayLimitMinutes() {
+		return mondayLimitMinutes;
+	}
+
+	public void setMondayLimitMinutes(Integer mondayLimitMinutes) {
+		this.mondayLimitMinutes = mondayLimitMinutes;
+	}
+
+	public Integer getTuesdayLimitMinutes() {
+		return tuesdayLimitMinutes;
+	}
+
+	public void setTuesdayLimitMinutes(Integer tuesdayLimitMinutes) {
+		this.tuesdayLimitMinutes = tuesdayLimitMinutes;
+	}
+
+	public Integer getWednesdayLimitMinutes() {
+		return wednesdayLimitMinutes;
+	}
+
+	public void setWednesdayLimitMinutes(Integer wednesdayLimitMinutes) {
+		this.wednesdayLimitMinutes = wednesdayLimitMinutes;
+	}
+
+	public Integer getThursdayLimitMinutes() {
+		return thursdayLimitMinutes;
+	}
+
+	public void setThursdayLimitMinutes(Integer thursdayLimitMinutes) {
+		this.thursdayLimitMinutes = thursdayLimitMinutes;
+	}
+
+	public Integer getFridayLimitMinutes() {
+		return fridayLimitMinutes;
+	}
+
+	public void setFridayLimitMinutes(Integer fridayLimitMinutes) {
+		this.fridayLimitMinutes = fridayLimitMinutes;
+	}
+
+	public Integer getSaturdayLimitMinutes() {
+		return saturdayLimitMinutes;
+	}
+
+	public void setSaturdayLimitMinutes(Integer saturdayLimitMinutes) {
+		this.saturdayLimitMinutes = saturdayLimitMinutes;
+	}
+
+	public Integer getSundayLimitMinutes() {
+		return sundayLimitMinutes;
+	}
+
+	public void setSundayLimitMinutes(Integer sundayLimitMinutes) {
+		this.sundayLimitMinutes = sundayLimitMinutes;
 	}
 
 	public Integer getNotificationThreshold() {

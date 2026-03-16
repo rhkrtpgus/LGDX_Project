@@ -11,6 +11,15 @@
     <result property="weekdayEndHour" column="weekday_end_hour" />
     <result property="weekendStartHour" column="weekend_start_hour" />
     <result property="weekendEndHour" column="weekend_end_hour" />
+    <result property="bedtimeLockEnabled" column="bedtime_lock_enabled" />
+    <result property="bedtimeHour" column="bedtime_hour" />
+    <result property="mondayLimitMinutes" column="monday_limit_minutes" />
+    <result property="tuesdayLimitMinutes" column="tuesday_limit_minutes" />
+    <result property="wednesdayLimitMinutes" column="wednesday_limit_minutes" />
+    <result property="thursdayLimitMinutes" column="thursday_limit_minutes" />
+    <result property="fridayLimitMinutes" column="friday_limit_minutes" />
+    <result property="saturdayLimitMinutes" column="saturday_limit_minutes" />
+    <result property="sundayLimitMinutes" column="sunday_limit_minutes" />
     <result property="notificationThreshold" column="notification_threshold" />
     <result property="autoBlockEnabled" column="auto_block_enabled" />
     <result property="updatedAt" column="updated_at" />
@@ -74,6 +83,15 @@
       weekday_end_hour as weekday_end_hour,
       weekend_start_hour as weekend_start_hour,
       weekend_end_hour as weekend_end_hour,
+      bedtime_lock_enabled as bedtime_lock_enabled,
+      bedtime_hour as bedtime_hour,
+      monday_limit_minutes as monday_limit_minutes,
+      tuesday_limit_minutes as tuesday_limit_minutes,
+      wednesday_limit_minutes as wednesday_limit_minutes,
+      thursday_limit_minutes as thursday_limit_minutes,
+      friday_limit_minutes as friday_limit_minutes,
+      saturday_limit_minutes as saturday_limit_minutes,
+      sunday_limit_minutes as sunday_limit_minutes,
       notification_threshold as notification_threshold,
       auto_block_enabled as auto_block_enabled,
       updated_at as updated_at
@@ -89,6 +107,15 @@
       weekday_end_hour,
       weekend_start_hour,
       weekend_end_hour,
+      bedtime_lock_enabled,
+      bedtime_hour,
+      monday_limit_minutes,
+      tuesday_limit_minutes,
+      wednesday_limit_minutes,
+      thursday_limit_minutes,
+      friday_limit_minutes,
+      saturday_limit_minutes,
+      sunday_limit_minutes,
       notification_threshold,
       auto_block_enabled,
       updated_at
@@ -99,6 +126,15 @@
       #{weekdayEndHour},
       #{weekendStartHour},
       #{weekendEndHour},
+      #{bedtimeLockEnabled},
+      #{bedtimeHour},
+      #{mondayLimitMinutes},
+      #{tuesdayLimitMinutes},
+      #{wednesdayLimitMinutes},
+      #{thursdayLimitMinutes},
+      #{fridayLimitMinutes},
+      #{saturdayLimitMinutes},
+      #{sundayLimitMinutes},
       #{notificationThreshold},
       #{autoBlockEnabled},
       current_timestamp
@@ -109,6 +145,15 @@
       weekday_end_hour = excluded.weekday_end_hour,
       weekend_start_hour = excluded.weekend_start_hour,
       weekend_end_hour = excluded.weekend_end_hour,
+      bedtime_lock_enabled = excluded.bedtime_lock_enabled,
+      bedtime_hour = excluded.bedtime_hour,
+      monday_limit_minutes = excluded.monday_limit_minutes,
+      tuesday_limit_minutes = excluded.tuesday_limit_minutes,
+      wednesday_limit_minutes = excluded.wednesday_limit_minutes,
+      thursday_limit_minutes = excluded.thursday_limit_minutes,
+      friday_limit_minutes = excluded.friday_limit_minutes,
+      saturday_limit_minutes = excluded.saturday_limit_minutes,
+      sunday_limit_minutes = excluded.sunday_limit_minutes,
       notification_threshold = excluded.notification_threshold,
       auto_block_enabled = excluded.auto_block_enabled,
       updated_at = current_timestamp

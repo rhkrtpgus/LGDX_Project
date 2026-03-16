@@ -15,6 +15,10 @@ import {
 
 type SettingsControlPanelProps = {
   onStatusChange?: (message: string) => void
+  selectedFamilyId?: number | null
+  selectedChildId?: number | null
+  onSelectFamilyId?: (familyId: number | null) => void
+  onSelectChildId?: (childId: number | null) => void
 }
 
 type DetailType = 'consent' | 'report' | 'childProtect' | 'placeholder'
@@ -167,7 +171,13 @@ function PeriodCard({ period }: { period: ReportPeriod | null }) {
   )
 }
 
-export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelProps) {
+export function SettingsControlPanel({
+  onStatusChange,
+  selectedFamilyId: controlledFamilyId,
+  selectedChildId: controlledChildId,
+  onSelectFamilyId,
+  onSelectChildId,
+}: SettingsControlPanelProps) {
   const [settings, setSettings] = useState<RuntimeSettings | null>(null)
   const [showConsentSheet, setShowConsentSheet] = useState(false)
   const [savingRuntime, setSavingRuntime] = useState(false)
@@ -183,6 +193,18 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
   const [reportError, setReportError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (controlledFamilyId !== undefined) {
+      setSelectedFamilyId(controlledFamilyId)
+    }
+  }, [controlledFamilyId])
+
+  useEffect(() => {
+    if (controlledChildId !== undefined) {
+      setSelectedChildId(controlledChildId)
+    }
+  }, [controlledChildId])
+
+  useEffect(() => {
     fetchRuntimeSettings()
       .then(setSettings)
       .catch(() => onStatusChange?.('설정 정보를 불러오지 못했습니다.'))
@@ -192,19 +214,25 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
     fetchReportFamilies()
       .then((families) => {
         setReportFamilies(families)
-        setSelectedFamilyId((current) => current ?? families[0]?.familyId ?? null)
+        setSelectedFamilyId((current) => {
+          const nextFamilyId = controlledFamilyId ?? current ?? families[0]?.familyId ?? null
+          onSelectFamilyId?.(nextFamilyId)
+          return nextFamilyId
+        })
       })
       .catch(() => {
         setReportFamilies([])
         setSelectedFamilyId(null)
+        onSelectFamilyId?.(null)
       })
-  }, [])
+  }, [controlledFamilyId, onSelectFamilyId])
 
   useEffect(() => {
     if (!selectedFamilyId) {
       setChildren([])
       setSelectedChildId(null)
       setMobileReport(null)
+      onSelectChildId?.(null)
       return
     }
 
@@ -218,19 +246,30 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
       .then(([report, nextChildren]) => {
         setMobileReport(report)
         setChildren(nextChildren)
-        setSelectedChildId((current) => current ?? nextChildren[0]?.childId ?? null)
+        setSelectedChildId((current) => {
+          const nextChildId =
+            controlledChildId != null && nextChildren.some((child) => child.childId === controlledChildId)
+              ? controlledChildId
+              : current != null && nextChildren.some((child) => child.childId === current)
+                ? current
+                : nextChildren[0]?.childId ?? null
+
+          onSelectChildId?.(nextChildId)
+          return nextChildId
+        })
         onStatusChange?.('보호자 리포트와 자녀 보호 설정을 불러왔습니다.')
       })
       .catch(() => {
         setMobileReport(null)
         setChildren([])
         setSelectedChildId(null)
+        onSelectChildId?.(null)
         setReportError('보호자 리포트 정보를 불러오지 못했습니다.')
       })
       .finally(() => {
         setReportLoading(false)
       })
-  }, [onStatusChange, selectedFamilyId])
+  }, [controlledChildId, onSelectChildId, onStatusChange, selectedFamilyId])
 
   const activeSection = useMemo(
     () => settingsSections.find((section) => section.id === activeSectionId) ?? settingsSections[0],
@@ -248,6 +287,20 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
       setActiveItemId(activeSection.items[0]?.id ?? '')
     }
   }, [activeItemId, activeSection])
+
+  function handleFamilyChange(value: string) {
+    const nextFamilyId = value ? Number(value) : null
+    setSelectedFamilyId(nextFamilyId)
+    setSelectedChildId(null)
+    onSelectFamilyId?.(nextFamilyId)
+    onSelectChildId?.(null)
+  }
+
+  function handleChildChange(value: string) {
+    const nextChildId = value ? Number(value) : null
+    setSelectedChildId(nextChildId)
+    onSelectChildId?.(nextChildId)
+  }
 
   async function patchSettings(payload: Partial<RuntimeSettings>, message: string) {
     setSavingRuntime(true)
@@ -415,7 +468,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                   <select
                     className="analysis-input analysis-input--compact"
                     value={selectedFamilyId ?? ''}
-                    onChange={(event) => setSelectedFamilyId(Number(event.target.value))}
+                    onChange={(event) => handleFamilyChange(event.target.value)}
                   >
                     {reportFamilies.length > 0 ? (
                       reportFamilies.map((family) => (
@@ -431,7 +484,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                   <select
                     className="analysis-input analysis-input--compact"
                     value={selectedChild?.childId ?? ''}
-                    onChange={(event) => setSelectedChildId(Number(event.target.value))}
+                    onChange={(event) => handleChildChange(event.target.value)}
                   >
                     {children.length > 0 ? (
                       children.map((child) => (
@@ -504,7 +557,7 @@ export function SettingsControlPanel({ onStatusChange }: SettingsControlPanelPro
                   <select
                     className="analysis-input analysis-input--compact"
                     value={selectedFamilyId ?? ''}
-                    onChange={(event) => setSelectedFamilyId(Number(event.target.value))}
+                    onChange={(event) => handleFamilyChange(event.target.value)}
                   >
                     {reportFamilies.length > 0 ? (
                       reportFamilies.map((family) => (

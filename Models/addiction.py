@@ -30,6 +30,7 @@ from collections import deque
 from datetime import datetime
 import threading
 import uuid
+from types import SimpleNamespace
 
 from API import fetch_youtube_video_context
 from mongo_monitor_store import MongoMonitorStore
@@ -67,6 +68,11 @@ CONFIG = {
     "avg_ipd_mm": 63.0,                 # 평균 동공 간 거리 (mm)
     "safe_distance_min_cm": 50.0,       # 권장 최소 시청 거리 (cm)
     "safe_distance_max_cm": 200.0,      # 권장 최대 시청 거리 (cm)
+    "back_wall_clearance_cm": 20.0,     # 뒷벽까지는 최소 여유 공간 확보
+    "distance_min_ratio_to_wall": 0.35, # 뒷벽 거리 기준 권장 최소 비율
+    "distance_max_ratio_to_wall": 0.72, # 뒷벽 거리 기준 권장 최대 비율
+    "auto_wall_buffer_cm": 35.0,        # 자동 추정 시 사용자 뒤 공간 보정값
+    "auto_wall_min_sample_cm": 80.0,    # 벽 거리 추정에 사용할 최소 샘플 거리
 
     # ── [신규] 집중도 Score 가중치
     # 집중도 = (정면 응시 + 눈 깜박임 정상 + 자세 안정 + 적정 거리) 합산
@@ -116,6 +122,14 @@ face_mesh = None
 pose = None
 
 
+class _DummyProcessor:
+    def process(self, _image):
+        return SimpleNamespace(
+            multi_face_landmarks=None,
+            pose_landmarks=None,
+        )
+
+
 def initialize_mediapipe():
     global mp_face_mesh, mp_pose, mp_drawing, face_mesh, pose
 
@@ -123,10 +137,15 @@ def initialize_mediapipe():
         return
 
     if not hasattr(mp, "solutions"):
-        raise RuntimeError(
-            "mediapipe.solutions를 사용할 수 없습니다. metadata-only 모드가 아닌 경우 "
-            "호환되는 mediapipe 환경이 필요합니다."
+        print(
+            "[WARN] mediapipe.solutions를 사용할 수 없어 랜드마크 없는 기본 카메라 모드로 진행합니다."
         )
+        mp_face_mesh = None
+        mp_pose = None
+        mp_drawing = None
+        face_mesh = _DummyProcessor()
+        pose = _DummyProcessor()
+        return
 
     mp_face_mesh = mp.solutions.face_mesh
     mp_pose = mp.solutions.pose
@@ -259,6 +278,14 @@ class KidsMonitorState:
         self.min_focus_score = 100.0
         self.max_risk_score = 0.0
         self.last_child_messages = []
+        # 중독 관리 안내(자세/눈/거리) 메시지 노출 여부.
+        # 기본값은 켜짐이며, watch-only 시나리오에서는 CLI 옵션으로 끌 수 있다.
+        self.care_guidance_enabled = True
+        self.back_wall_distance_cm = None
+        self.back_wall_distance_manual = False
+        self.recommended_distance_min_cm = CONFIG["safe_distance_min_cm"]
+        self.recommended_distance_max_cm = CONFIG["safe_distance_max_cm"]
+        self.distance_samples = deque(maxlen=180)
 
         # 로그
         self.log_data = []
@@ -425,6 +452,56 @@ def estimate_screen_distance(landmarks_raw, frame_w, frame_h):
     distance_cm = distance_mm / 10.0
 
     return round(distance_cm, 1)
+
+
+def get_recommended_distance_range(state: KidsMonitorState) -> tuple[float, float]:
+    base_min = float(CONFIG["safe_distance_min_cm"])
+    base_max = float(CONFIG["safe_distance_max_cm"])
+    wall_distance = state.back_wall_distance_cm
+
+    if wall_distance is None or wall_distance <= 0:
+        return base_min, base_max
+
+    clearance = float(CONFIG["back_wall_clearance_cm"])
+    wall_based_min = wall_distance * float(CONFIG["distance_min_ratio_to_wall"])
+    wall_based_max = wall_distance * float(CONFIG["distance_max_ratio_to_wall"])
+
+    recommended_min = max(base_min, round(wall_based_min, 1))
+    recommended_max = min(base_max, round(wall_based_max, 1), round(wall_distance - clearance, 1))
+
+    if recommended_max <= recommended_min:
+        recommended_max = min(base_max, round(wall_distance - clearance, 1))
+        recommended_min = max(base_min, min(recommended_min, recommended_max - 10.0))
+
+    if recommended_max <= recommended_min:
+        return base_min, base_max
+
+    return recommended_min, recommended_max
+
+
+def update_distance_profile(state: KidsMonitorState, observed_distance_cm: float) -> None:
+    if observed_distance_cm <= 0:
+        state.recommended_distance_min_cm, state.recommended_distance_max_cm = (
+            get_recommended_distance_range(state)
+        )
+        return
+
+    state.distance_samples.append(observed_distance_cm)
+
+    if not state.back_wall_distance_manual:
+        valid_samples = [
+            sample for sample in state.distance_samples
+            if sample >= CONFIG["auto_wall_min_sample_cm"]
+        ]
+        if len(valid_samples) >= 10:
+            top_count = max(3, len(valid_samples) // 5)
+            farthest_samples = sorted(valid_samples)[-top_count:]
+            estimated_wall = max(farthest_samples) + CONFIG["auto_wall_buffer_cm"]
+            state.back_wall_distance_cm = round(estimated_wall, 1)
+
+    state.recommended_distance_min_cm, state.recommended_distance_max_cm = (
+        get_recommended_distance_range(state)
+    )
 
 
 def mask_face_from_landmarks(frame, landmarks_raw):
@@ -823,6 +900,7 @@ def get_snapshot(state: KidsMonitorState, bpm: int, pose_status: str) -> dict:
     현재 프레임의 모든 측정값을 딕셔너리로 반환.
     HUD 대신 외부 앱(모바일/웹/대시보드)에서 이 값을 소비한다.
     """
+    child_messages = get_child_messages(state, bpm)
     return {
         "timestamp":        datetime.now().isoformat(timespec="seconds"),
         "watch_sec":        state.watch_time,               # 누적 시청 시간 (초)
@@ -840,6 +918,9 @@ def get_snapshot(state: KidsMonitorState, bpm: int, pose_status: str) -> dict:
         # ── 화면 거리
         "distance_cm":      state.screen_distance_cm,       # 추정 거리 (cm)
         "distance_ok":      state.distance_ok,              # 권장 범위 내 여부
+        "recommended_distance_min_cm": state.recommended_distance_min_cm,
+        "recommended_distance_max_cm": state.recommended_distance_max_cm,
+        "back_wall_distance_cm": state.back_wall_distance_cm,
         # ── 자세
         "pose_status":      pose_status,                    # "정지" / "움직임" / "감지 안됨"
         "still_sec":        round(state.still_duration, 1), # 연속 정지 시간 (초)
@@ -859,7 +940,8 @@ def get_snapshot(state: KidsMonitorState, bpm: int, pose_status: str) -> dict:
         "risk_score":       round(state.risk_score, 1),     # 위험도 (0~100)
         "risk_level":       state.risk_level,               # 정상/주의/경고/위험
         # ── 아이용 메시지 (행동 유도)
-        "child_messages":   get_child_messages(state, bpm), # 외부 앱에서 UI로 표시
+        "child_messages":   child_messages,                 # 외부 앱에서 UI로 표시
+        "child_message_card": get_child_message(state, bpm, child_messages),
     }
 
 
@@ -974,6 +1056,7 @@ def save_log(state: KidsMonitorState, scores):
 
 def compute_focus_score(state: KidsMonitorState, bpm: int) -> float:
     scores = {}
+    recommended_min_cm, recommended_max_cm = get_recommended_distance_range(state)
 
     if state.head_is_front:
         scores["head"] = 100.0
@@ -992,13 +1075,13 @@ def compute_focus_score(state: KidsMonitorState, bpm: int) -> float:
     d = state.screen_distance_cm
     if d <= 0:
         scores["distance"] = 50.0
-    elif CONFIG["safe_distance_min_cm"] <= d <= CONFIG["safe_distance_max_cm"]:
+    elif recommended_min_cm <= d <= recommended_max_cm:
         scores["distance"] = 100.0
-    elif d < CONFIG["safe_distance_min_cm"]:
-        excess = CONFIG["safe_distance_min_cm"] - d
+    elif d < recommended_min_cm:
+        excess = recommended_min_cm - d
         scores["distance"] = max(0.0, 100.0 - excess * 2.0)
     else:
-        excess = d - CONFIG["safe_distance_max_cm"]
+        excess = d - recommended_max_cm
         scores["distance"] = max(0.0, 100.0 - excess * 1.0)
 
     focus = (
@@ -1012,6 +1095,7 @@ def compute_focus_score(state: KidsMonitorState, bpm: int) -> float:
 
 def compute_risk_score(state: KidsMonitorState) -> tuple:
     scores = {}
+    recommended_min_cm, recommended_max_cm = get_recommended_distance_range(state)
 
     t = state.watch_time
     if t < CONFIG["warn_watch_time_1"]:
@@ -1041,14 +1125,14 @@ def compute_risk_score(state: KidsMonitorState) -> tuple:
         scores["head_pose"] = 0
 
     d = state.screen_distance_cm
-    if 0 < d < CONFIG["safe_distance_min_cm"]:
+    if 0 < d < recommended_min_cm:
         scores["distance"] = (
-            (CONFIG["safe_distance_min_cm"] - d) / CONFIG["safe_distance_min_cm"] * 100
+            (recommended_min_cm - d) / max(recommended_min_cm, 1.0) * 100
         )
-    elif d > CONFIG["safe_distance_max_cm"]:
+    elif d > recommended_max_cm:
         scores["distance"] = min(
             100,
-            (d - CONFIG["safe_distance_max_cm"]) / CONFIG["safe_distance_max_cm"] * 100,
+            (d - recommended_max_cm) / max(recommended_max_cm, 1.0) * 100,
         )
     else:
         scores["distance"] = 0
@@ -1081,34 +1165,134 @@ def compute_risk_score(state: KidsMonitorState) -> tuple:
     return total, level, scores
 
 
-def get_child_messages(state: KidsMonitorState, bpm: int) -> list:
-    msgs = []
+def _build_bear_message_card(message: str, trigger: str) -> dict:
+    return {
+        "character": "bear",
+        "layout": "left-bear-bubble",
+        "trigger": trigger,
+        "message": message,
+    }
+
+
+def _get_watch_time_message(state: KidsMonitorState) -> tuple[str | None, str | None]:
     t = state.watch_time
 
     if t >= CONFIG["warn_watch_time_3"]:
-        msgs.append("⏸ 오래 봤어요! 잠깐 쉬는 시간이 필요해요")
-    elif t >= CONFIG["warn_watch_time_2"]:
-        msgs.append("⏰ TV를 오래 보고 있어요. 조금 쉬어볼까요?")
-    elif t >= CONFIG["warn_watch_time_1"]:
-        msgs.append("🙂 30분 동안 봤어요! 눈을 잠깐 쉬게 해요")
+        return (
+            "오늘 시청 시간이 90분이 되었어요.\n이제 잠시 쉬어볼까요?",
+            "watch_time_90m",
+        )
+    if t >= CONFIG["warn_watch_time_2"]:
+        return (
+            "오늘 시청 시간이 60분이 되었어요.\n눈을 잠깐 쉬게 해요.",
+            "watch_time_60m",
+        )
+    if t >= CONFIG["warn_watch_time_1"]:
+        return (
+            "오늘 시청 시간이 30분이 되었어요.\n잠깐 쉬어갈까요?",
+            "watch_time_30m",
+        )
+
+    return None, None
+
+
+def _get_care_guidance_messages(state: KidsMonitorState, bpm: int) -> list[tuple[str, str]]:
+    messages = []
+    recommended_min_cm, recommended_max_cm = get_recommended_distance_range(state)
 
     if state.still_duration >= CONFIG["still_warn_sec"]:
-        msgs.append("🧍 몸을 쭉 펴고 스트레칭 해볼까요?")
+        messages.append(
+            (
+                "같은 자세가 오래 이어졌어요.\n몸을 쭉 펴고 스트레칭해요.",
+                "stretch",
+            )
+        )
 
     blink_status = get_blink_status(bpm)
     if blink_status == "low":
-        msgs.append("👀 눈을 너무 적게 깜빡이고 있어요. 눈을 자주 쉬게 해주세요")
+        messages.append(
+            (
+                "눈이 조금 지쳐 보여요.\n천천히 눈을 깜빡여 볼까요?",
+                "blink_low",
+            )
+        )
     elif blink_status == "high":
-        msgs.append("👀 눈을 너무 자주 깜빡이고 있어요. 눈이 피곤한지 잠깐 쉬어볼까요?")
+        messages.append(
+            (
+                "눈이 많이 피곤할 수 있어요.\n잠깐 먼 곳을 바라봐요.",
+                "blink_high",
+            )
+        )
 
     if not state.head_is_front:
-        msgs.append("📺 화면을 제대로 바라봐 주세요")
+        messages.append(
+            (
+                "화면을 볼 때는 정면으로 앉아주세요.",
+                "head_pose",
+            )
+        )
 
     d = state.screen_distance_cm
-    if 0 < d < CONFIG["safe_distance_min_cm"]:
-        msgs.append("↩️ 화면에서 조금 떨어져 주세요")
-    elif d > CONFIG["safe_distance_max_cm"]:
-        msgs.append("➡️ 화면에 조금 더 가까이 와도 좋아요")
+    if 0 < d < recommended_min_cm:
+        messages.append(
+            (
+                f"화면과 조금만 더 떨어져 앉아주세요.\n권장 거리는 {int(round(recommended_min_cm))}~{int(round(recommended_max_cm))}cm예요.",
+                "distance_near",
+            )
+        )
+    elif d > recommended_max_cm:
+        messages.append(
+            (
+                f"화면이 조금 멀어요.\n권장 거리는 {int(round(recommended_min_cm))}~{int(round(recommended_max_cm))}cm예요.",
+                "distance_far",
+            )
+        )
+
+    return messages
+
+
+def get_child_message(
+    state: KidsMonitorState,
+    bpm: int,
+    messages: list[str] | None = None,
+) -> dict | None:
+    watch_message, watch_trigger = _get_watch_time_message(state)
+    if watch_message:
+        return _build_bear_message_card(watch_message, watch_trigger)
+
+    if not state.care_guidance_enabled:
+        return None
+
+    care_messages = _get_care_guidance_messages(state, bpm)
+    if care_messages:
+        message, trigger = care_messages[0]
+        return _build_bear_message_card(message, trigger)
+
+    if messages:
+        return _build_bear_message_card(messages[0], "fallback")
+
+    return None
+
+
+def get_child_messages(state: KidsMonitorState, bpm: int) -> list:
+    msgs = []
+    seen = set()
+
+    watch_message, _ = _get_watch_time_message(state)
+    if watch_message:
+        msgs.append(watch_message)
+        seen.add(watch_message)
+
+    if not state.care_guidance_enabled:
+        return msgs
+
+    for message, _ in _get_care_guidance_messages(state, bpm):
+        if message in seen:
+            continue
+        msgs.append(message)
+        seen.add(message)
+        if len(msgs) >= 3:
+            break
 
     return msgs
 
@@ -1196,6 +1380,17 @@ def build_parser():
         default=0,
         help="Maximum runtime in seconds before the monitor exits automatically.",
     )
+    parser.add_argument(
+        "--watch-guidance-only",
+        action="store_true",
+        help="시청 시간 안내만 표시하고 자세/눈/거리 케어 메시지는 끕니다.",
+    )
+    parser.add_argument(
+        "--back-wall-distance-cm",
+        type=float,
+        default=0.0,
+        help="TV 뒤쪽 벽까지의 거리(cm). 지정하면 이 값 안에서 권장 시청 거리를 동적으로 계산합니다.",
+    )
     return parser
 
 
@@ -1207,6 +1402,11 @@ def main():
     state.user_id = args.user_id
     state.child_id = args.child_id
     state.analysis_id = args.analysis_id
+    state.care_guidance_enabled = not args.watch_guidance_only
+    if args.back_wall_distance_cm > 0:
+        state.back_wall_distance_cm = round(args.back_wall_distance_cm, 1)
+        state.back_wall_distance_manual = True
+    update_distance_profile(state, 0.0)
 
     mongo_store = None
     mongo_enabled = CONFIG["mongo_enabled"] and not args.disable_mongo
@@ -1300,6 +1500,14 @@ def main():
         )
     if args.show_preview and args.mask_face_preview:
         print("[INFO] Demo mode: 프리뷰 창에서 얼굴 마스킹을 적용합니다.")
+    if state.back_wall_distance_manual:
+        print(
+            "[INFO] 뒷벽 거리 기준 권장 시청 거리: "
+            f"{state.recommended_distance_min_cm:.1f}cm ~ {state.recommended_distance_max_cm:.1f}cm "
+            f"(뒷벽 {state.back_wall_distance_cm:.1f}cm)"
+        )
+    else:
+        print("[INFO] 뒷벽 거리는 관측 거리로 자동 보정합니다.")
 
     if args.youtube_url and not state.youtube_url:
         try:
@@ -1377,8 +1585,9 @@ def main():
             # [신규] 화면 거리 추정
             dist = estimate_screen_distance(lm_raw, fw, fh)
             state.screen_distance_cm = dist
+            update_distance_profile(state, dist)
             state.distance_ok = (
-                CONFIG["safe_distance_min_cm"] <= dist <= CONFIG["safe_distance_max_cm"]
+                state.recommended_distance_min_cm <= dist <= state.recommended_distance_max_cm
             ) if dist > 0 else True
 
         # ── 자세 분석

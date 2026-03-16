@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.repository.FamilySelectionPreferenceMapper">
+
+  <resultMap id="familySelectionPreferenceResultMap" type="com.example.demo.domain.FamilySelectionPreferenceRecord">
+    <id property="familyId" column="family_id" />
+    <result property="selectedChildId" column="selected_child_id" />
+    <result property="updatedAt" column="updated_at" />
+  </resultMap>
+
+  <select id="findByFamilyId" resultMap="familySelectionPreferenceResultMap">
+    select
+      family_id as family_id,
+      selected_child_id as selected_child_id,
+      updated_at as updated_at
+    from family_selection_preference
+    where family_id = #{familyId}
+  </select>
+
+  <insert id="upsert" parameterType="com.example.demo.domain.FamilySelectionPreferenceRecord">
+    insert into family_selection_preference (
+      family_id,
+      selected_child_id,
+      updated_at
+    ) values (
+      #{familyId},
+      #{selectedChildId},
+      current_timestamp
+    )
+    on conflict (family_id) do update set
+      selected_child_id = excluded.selected_child_id,
+      updated_at = current_timestamp
+  </insert>
+
+</mapper>

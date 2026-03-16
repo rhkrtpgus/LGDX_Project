@@ -1,4 +1,4 @@
-FROM gradle:8.13-jdk24 AS builder
+FROM eclipse-temurin:24-jdk AS builder
 
 WORKDIR /workspace
 
@@ -6,7 +6,9 @@ COPY build.gradle settings.gradle gradlew gradlew.bat ./
 COPY gradle ./gradle
 COPY src ./src
 
-RUN gradle bootJar --no-daemon
+RUN sed -i 's/\r$//' gradlew \
+    && chmod +x gradlew \
+    && ./gradlew bootJar --no-daemon
 
 FROM eclipse-temurin:24-jre
 

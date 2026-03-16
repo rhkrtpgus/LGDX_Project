@@ -2,10 +2,13 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.ChildWatchPolicyRequest;
 import com.example.demo.dto.ChildWatchPolicyResponse;
+import com.example.demo.dto.FamilySelectionPreferenceRequest;
+import com.example.demo.dto.FamilySelectionPreferenceResponse;
 import com.example.demo.dto.ParentAlertResponse;
 import com.example.demo.dto.ParentChildResponse;
 import com.example.demo.dto.ParentOverviewResponse;
 import com.example.demo.dto.ParentViewingHistoryResponse;
+import com.example.demo.service.FamilySelectionPreferenceService;
 import com.example.demo.service.ParentControlService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,9 +26,14 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 public class ParentControlController {
 
 	private final ParentControlService parentControlService;
+	private final FamilySelectionPreferenceService familySelectionPreferenceService;
 
-	public ParentControlController(ParentControlService parentControlService) {
+	public ParentControlController(
+		ParentControlService parentControlService,
+		FamilySelectionPreferenceService familySelectionPreferenceService
+	) {
 		this.parentControlService = parentControlService;
+		this.familySelectionPreferenceService = familySelectionPreferenceService;
 	}
 
 	@GetMapping("/overview")
@@ -40,6 +48,28 @@ public class ParentControlController {
 	@GetMapping("/children")
 	public List<ParentChildResponse> getChildren(@RequestParam(defaultValue = "1") int familyId) {
 		return parentControlService.getChildren(familyId);
+	}
+
+	@GetMapping("/selection")
+	public FamilySelectionPreferenceResponse getSelection(
+		@RequestParam(defaultValue = "1") int familyId
+	) {
+		try {
+			return familySelectionPreferenceService.getPreference(familyId);
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(BAD_REQUEST, exception.getMessage(), exception);
+		}
+	}
+
+	@PatchMapping("/selection")
+	public FamilySelectionPreferenceResponse updateSelection(
+		@RequestBody FamilySelectionPreferenceRequest request
+	) {
+		try {
+			return familySelectionPreferenceService.updatePreference(request);
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(BAD_REQUEST, exception.getMessage(), exception);
+		}
 	}
 
 	@GetMapping("/watch-policy")

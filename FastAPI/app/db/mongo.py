@@ -34,11 +34,47 @@ def get_monitor_session_by_analysis_id(analysis_id: int) -> dict[str, Any] | Non
         client.close()
 
 
+def get_monitor_session_by_session_id(session_id: str) -> dict[str, Any] | None:
+    settings = get_settings()
+    client = get_mongo_client()
+    try:
+        collection = client[settings.mongodb_database]["monitor_sessions"]
+        return collection.find_one({"session_id": session_id})
+    finally:
+        client.close()
+
+
+def get_latest_monitor_session_by_child_id(child_id: int) -> dict[str, Any] | None:
+    settings = get_settings()
+    client = get_mongo_client()
+    try:
+        collection = client[settings.mongodb_database]["monitor_sessions"]
+        return collection.find_one(
+            {"child_id": child_id},
+            sort=[("updated_at", -1), ("started_at", -1), ("created_at", -1)],
+        )
+    finally:
+        client.close()
+
+
 def count_monitor_telemetry(session_id: str) -> int:
     settings = get_settings()
     client = get_mongo_client()
     try:
         collection = client[settings.mongodb_database]["monitor_telemetry"]
         return int(collection.count_documents({"session_id": session_id}))
+    finally:
+        client.close()
+
+
+def get_latest_monitor_telemetry(session_id: str) -> dict[str, Any] | None:
+    settings = get_settings()
+    client = get_mongo_client()
+    try:
+        collection = client[settings.mongodb_database]["monitor_telemetry"]
+        return collection.find_one(
+            {"session_id": session_id},
+            sort=[("captured_at", -1), ("created_at", -1)],
+        )
     finally:
         client.close()

@@ -9,6 +9,13 @@ import {
 
 type AnalysisPanelProps = {
   familyId?: number
+  preferredChildId?: number | null
+  onSelectChildId?: (childId: number | null) => void
+  initialVideoUrl?: string
+  hideHistory?: boolean
+  launchButtonLabel?: string
+  onBack?: () => void
+  onOpenUrl?: (url: string, statusMessage: string) => void
   onStatusChange?: (message: string) => void
 }
 
@@ -44,20 +51,47 @@ function buildShareText(result: AnalysisResult) {
   ].join('\n')
 }
 
-export function AnalysisPanel({ familyId = 1, onStatusChange }: AnalysisPanelProps) {
-  const [videoUrl, setVideoUrl] = useState(SAMPLE_URL)
+export function AnalysisPanel({
+  familyId = 1,
+  preferredChildId = null,
+  onSelectChildId,
+  initialVideoUrl = SAMPLE_URL,
+  hideHistory = false,
+  launchButtonLabel = '유튜브로 이동',
+  onBack,
+  onOpenUrl,
+  onStatusChange,
+}: AnalysisPanelProps) {
+  const [videoUrl, setVideoUrl] = useState(initialVideoUrl)
   const [children, setChildren] = useState<ParentChild[]>([])
-  const [selectedChildId, setSelectedChildId] = useState<number | null>(null)
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(preferredChildId)
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [history, setHistory] = useState<AnalysisResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    setVideoUrl(initialVideoUrl)
+  }, [initialVideoUrl])
+
+  useEffect(() => {
+    setSelectedChildId(preferredChildId)
+  }, [preferredChildId])
+
+  useEffect(() => {
+    onSelectChildId?.(selectedChildId)
+  }, [onSelectChildId, selectedChildId])
+
+  useEffect(() => {
     void Promise.all([refreshHistory(), refreshChildren()])
-  }, [familyId])
+  }, [familyId, preferredChildId])
 
   async function refreshHistory() {
+    if (hideHistory) {
+      setHistory([])
+      return
+    }
+
     try {
       setHistory(await fetchAnalysisHistory(6))
     } catch {
@@ -69,7 +103,13 @@ export function AnalysisPanel({ familyId = 1, onStatusChange }: AnalysisPanelPro
     try {
       const nextChildren = await fetchParentChildren(familyId)
       setChildren(nextChildren)
-      setSelectedChildId((current) => current ?? nextChildren[0]?.childId ?? null)
+      setSelectedChildId((current) => {
+        if (preferredChildId && nextChildren.some((child) => child.childId === preferredChildId)) {
+          return preferredChildId
+        }
+
+        return current ?? nextChildren[0]?.childId ?? null
+      })
     } catch {
       setChildren([])
       setSelectedChildId(null)
@@ -90,9 +130,7 @@ export function AnalysisPanel({ familyId = 1, onStatusChange }: AnalysisPanelPro
       )
       await refreshHistory()
     } catch {
-      setError(
-        '분석 요청에 실패했습니다. 백엔드, PostgreSQL, Python 모델 연결 상태를 확인하세요.',
-      )
+      setError('분석 요청에 실패했습니다. 백엔드, PostgreSQL, Python 모델 연결 상태를 확인하세요.')
       onStatusChange?.('유튜브 분석 요청에 실패했습니다.')
     } finally {
       setLoading(false)
@@ -112,14 +150,27 @@ export function AnalysisPanel({ familyId = 1, onStatusChange }: AnalysisPanelPro
     }
   }
 
+  function handleOpenResult() {
+    if (!result) {
+      return
+    }
+
+    if (onOpenUrl) {
+      onOpenUrl(result.inputUrl, '분석을 통과한 유튜브 URL을 열었습니다.')
+      return
+    }
+
+    openYoutube(result.inputUrl)
+  }
+
   return (
     <section className="service-panel service-panel--analysis">
       <div className="service-panel__header">
         <span className="section-heading__eyebrow">TV앱 보호 기능</span>
         <h2>유튜브 재생 전 안전 분석</h2>
         <p>
-          유튜브 URL을 입력하면 메타데이터, 유해 여부, 중독 위험도, 재생 허용 여부를 TV
-          화면에서 바로 확인할 수 있습니다.
+          유튜브 URL을 입력하면 메타데이터, 유해 여부, 중독 위험도, 재생 허용 여부를 TV 화면에서 바로
+          확인할 수 있습니다.
         </p>
       </div>
 
@@ -134,7 +185,9 @@ export function AnalysisPanel({ familyId = 1, onStatusChange }: AnalysisPanelPro
         <select
           className="analysis-input analysis-input--compact"
           value={selectedChildId ?? ''}
-          onChange={(event) => setSelectedChildId(Number(event.target.value))}
+          onChange={(event) =>
+            setSelectedChildId(event.target.value ? Number(event.target.value) : null)
+          }
         >
           {children.length > 0 ? (
             children.map((child) => (
@@ -217,47 +270,54 @@ export function AnalysisPanel({ familyId = 1, onStatusChange }: AnalysisPanelPro
               className="analysis-submit"
               type="button"
               disabled={!result.playback.allowed}
-              onClick={() => openYoutube(result.inputUrl)}
+              onClick={handleOpenResult}
             >
-              유튜브로 이동
+              {launchButtonLabel}
             </button>
             <button className="analysis-link" type="button" onClick={() => void handleCopyReport()}>
               리포트 복사
             </button>
+            {onBack ? (
+              <button className="analysis-link" type="button" onClick={onBack}>
+                앱 목록으로
+              </button>
+            ) : null}
           </div>
 
           {result.errorMessage ? <p className="service-panel__error">{result.errorMessage}</p> : null}
         </div>
       ) : null}
 
-      <div className="analysis-history">
-        <div className="analysis-history__header">
-          <strong>최근 분석 이력</strong>
-          <span>{history.length}건</span>
-        </div>
+      {!hideHistory ? (
+        <div className="analysis-history">
+          <div className="analysis-history__header">
+            <strong>최근 분석 이력</strong>
+            <span>{history.length}건</span>
+          </div>
 
-        {history.map((item) => (
-          <article
-            key={item.analysisId ?? `${item.inputUrl}-${item.createdAt}`}
-            className="analysis-history__item"
-          >
-            <div>
-              <strong>{item.title ?? item.inputUrl}</strong>
-              <span>{item.playback.allowed ? '허용' : '주의'}</span>
-            </div>
-            <p>
-              {item.categoryNameKo ?? '미분류'} · 위험 점수 {item.playback.addictionRiskScore}점 ·{' '}
-              {item.playback.addictionRiskLevel}
-            </p>
-            <div className="analysis-history__actions">
-              <small>{item.createdAt ? new Date(item.createdAt).toLocaleString('ko-KR') : ''}</small>
-              <button className="analysis-link" type="button" onClick={() => openYoutube(item.inputUrl)}>
-                유튜브 열기
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
+          {history.map((item) => (
+            <article
+              key={item.analysisId ?? `${item.inputUrl}-${item.createdAt}`}
+              className="analysis-history__item"
+            >
+              <div>
+                <strong>{item.title ?? item.inputUrl}</strong>
+                <span>{item.playback.allowed ? '허용' : '주의'}</span>
+              </div>
+              <p>
+                {item.categoryNameKo ?? '미분류'} · 위험 점수 {item.playback.addictionRiskScore}점 ·{' '}
+                {item.playback.addictionRiskLevel}
+              </p>
+              <div className="analysis-history__actions">
+                <small>{item.createdAt ? new Date(item.createdAt).toLocaleString('ko-KR') : ''}</small>
+                <button className="analysis-link" type="button" onClick={() => openYoutube(item.inputUrl)}>
+                  유튜브 열기
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </section>
   )
 }

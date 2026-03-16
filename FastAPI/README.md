@@ -6,6 +6,10 @@ Current routes:
 - `/fastapi/analysis/youtube`
 - `/fastapi/analysis/history`
 - `/fastapi/settings/runtime`
+- `/fastapi/monitor/start`
+- `/fastapi/monitor/active`
+- `/fastapi/monitor/live`
+- `/fastapi/monitor/stop`
 
 Run locally:
 
@@ -16,6 +20,25 @@ python -m venv .venv
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Camera collection on Windows:
+
+```powershell
+cd c:\Users\4121\Desktop\DX\LGDX_Project\FastAPI
+.\scripts\start-fastapi-camera.ps1
+```
+
+- This stops only the Docker `fastapi` service and keeps PostgreSQL/MongoDB running in Docker.
+- `addiction.py` then runs with the local virtualenv Python, so OpenCV can access the host camera directly.
+- Front dev server should call FastAPI on `http://localhost:8000`.
+
+Recommended camera test flow:
+
+1. Keep `postgres`, `mongo`, and `back` containers running.
+2. Start local FastAPI with `.\scripts\start-fastapi-camera.ps1`.
+3. Open the Front dev server and enter the YouTube screen.
+4. Let one recommended video pass filtering and start monitoring.
+5. Check `GET http://localhost:8000/fastapi/monitor/live?childId=1` for `blinkBpm`, `screenDistanceCm`, and `poseStatus`.
 
 Environment:
 

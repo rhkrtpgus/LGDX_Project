@@ -143,6 +143,7 @@ class MongoMonitorStore:
                 "breakdown": {key: round(value, 2) for key, value in scores.items()},
             },
             "child_messages": snapshot["child_messages"],
+            "child_message_card": snapshot.get("child_message_card"),
             "created_at": utc_now_iso(),
         }
         self._telemetry().insert_one(document)

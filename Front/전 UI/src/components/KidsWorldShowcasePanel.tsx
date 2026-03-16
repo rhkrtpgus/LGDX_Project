@@ -1,15 +1,11 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { FocusContext, useFocusable } from '@noriginmedia/norigin-spatial-navigation'
 import { motion } from 'motion/react'
-import {
-  kidsCategories,
-  kidsFeaturedPosters,
-  kidsMiniCards,
-  type KidsCategory,
-  type KidsPoster,
-} from '../data/kidsSession'
+import { type KidsCategory, type KidsPoster, type KidsProfile } from '../data/kidsSession'
 
 type KidsWorldShowcasePanelProps = {
+  profile: KidsProfile
+  onResetProfile: () => void
   onStatusChange: (label: string) => void
 }
 
@@ -94,19 +90,56 @@ function KidsPosterButton({
   )
 }
 
-export function KidsWorldShowcasePanel({ onStatusChange }: KidsWorldShowcasePanelProps) {
-  const [activeCategory, setActiveCategory] = useState<KidsCategory>(kidsCategories[0])
-  const [selectedPoster, setSelectedPoster] = useState<KidsPoster>(kidsFeaturedPosters[0])
+function KidsProfileSwitchButton({
+  profileName,
+  onActivate,
+}: {
+  profileName: string
+  onActivate: () => void
+}) {
+  const { ref, focused, focusSelf } = useFocusable({
+    focusKey: 'KIDS_PROFILE_SWITCH',
+    onEnterPress: onActivate,
+  })
 
-  const { ref, focusKey } = useFocusable({
+  return (
+    <motion.button
+      ref={ref}
+      type="button"
+      className={`kids-world-session__profile-switch ${focused ? 'is-focused' : ''}`}
+      animate={focused ? { y: -2 } : { y: 0 }}
+      transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+      onMouseEnter={() => focusSelf()}
+      onClick={onActivate}
+    >
+      {profileName} 변경
+    </motion.button>
+  )
+}
+
+export function KidsWorldShowcasePanel({
+  profile,
+  onResetProfile,
+  onStatusChange,
+}: KidsWorldShowcasePanelProps) {
+  const [activeCategory, setActiveCategory] = useState<KidsCategory>(profile.categories[0])
+  const [selectedPoster, setSelectedPoster] = useState<KidsPoster>(profile.featuredPosters[0])
+  const { ref, focusKey, focusSelf } = useFocusable({
     focusKey: 'KIDS_WORLD_SESSION',
     trackChildren: true,
-    preferredChildFocusKey: `KIDS_CATEGORY-${kidsCategories[0].id}`,
+    preferredChildFocusKey: 'KIDS_PROFILE_SWITCH',
   })
+
+  useEffect(() => {
+    setActiveCategory(profile.categories[0])
+    setSelectedPoster(profile.featuredPosters[0])
+    onStatusChange(`${profile.name} 맞춤 아이들나라를 불러왔습니다.`)
+    focusSelf()
+  }, [focusSelf, onStatusChange, profile])
 
   const handleFocusCategory = (category: KidsCategory) => {
     setActiveCategory(category)
-    onStatusChange(`${category.label} 메뉴`)
+    onStatusChange(`${profile.name} · ${category.label}`)
   }
 
   const handleFocusPoster = (poster: KidsPoster) => {
@@ -116,21 +149,41 @@ export function KidsWorldShowcasePanel({ onStatusChange }: KidsWorldShowcasePane
 
   const handleActivatePoster = (poster: KidsPoster) => {
     setSelectedPoster(poster)
-    onStatusChange(`${poster.title} 선택`)
+    onStatusChange(`${profile.name} · ${poster.title} 선택`)
   }
 
   return (
     <FocusContext.Provider value={focusKey}>
       <section ref={ref} className="kids-world-session">
+        <div className="kids-world-session__profile-bar">
+          <div
+            className="kids-world-session__profile-card"
+            style={{ '--kids-profile-accent': profile.accent } as CSSProperties}
+          >
+            <div className="kids-world-session__profile-mark">{profile.avatarLabel}</div>
+            <div className="kids-world-session__profile-copy">
+              <span>{profile.headerBadge}</span>
+              <strong>{profile.name}</strong>
+              <small>
+                {profile.ageLabel} · {profile.summary}
+              </small>
+            </div>
+          </div>
+
+          <KidsProfileSwitchButton profileName={profile.name} onActivate={onResetProfile} />
+        </div>
+
         <div className="kids-world-session__rail">
           <div className="kids-world-session__quick">
-            <span className="kids-world-session__quick-item">시계</span>
-            <span className="kids-world-session__quick-item">곰</span>
-            <span className="kids-world-session__quick-item">돋</span>
+            {profile.quickLabels.map((label) => (
+              <span key={`${profile.id}-${label}`} className="kids-world-session__quick-item">
+                {label}
+              </span>
+            ))}
           </div>
 
           <div className="kids-world-session__categories">
-            {kidsCategories.map((category) => (
+            {profile.categories.map((category) => (
               <KidsCategoryButton
                 key={category.id}
                 category={category}
@@ -143,17 +196,17 @@ export function KidsWorldShowcasePanel({ onStatusChange }: KidsWorldShowcasePane
 
         <div className="kids-world-session__usage">
           <span className="kids-world-session__usage-badge">TV</span>
-          <strong>오늘 23시간 47분 이용</strong>
+          <strong>{profile.usageLabel}</strong>
         </div>
 
         <section className="kids-world-session__featured">
           <div className="kids-world-session__section-head">
-            <span className="kids-world-session__free">무료</span>
-            <h1>아이들나라 인기 추천작</h1>
+            <span className="kids-world-session__free">{profile.headerBadge}</span>
+            <h1>{profile.sectionTitle}</h1>
           </div>
 
           <div className="kids-world-session__poster-row">
-            {kidsFeaturedPosters.map((poster) => (
+            {profile.featuredPosters.map((poster) => (
               <KidsPosterButton
                 key={poster.id}
                 poster={poster}
@@ -166,16 +219,16 @@ export function KidsWorldShowcasePanel({ onStatusChange }: KidsWorldShowcasePane
         </section>
 
         <div className="kids-world-session__notice">
-          <div className="kids-world-session__notice-icon">시력</div>
+          <div className="kids-world-session__notice-icon">{profile.notice.icon}</div>
           <div>
-            <strong>시력 보호 모드 켜짐</strong>
-            <p>영상에 블루라이트 차단 기능이 적용됩니다.</p>
+            <strong>{profile.notice.title}</strong>
+            <p>{profile.notice.description}</p>
           </div>
         </div>
 
         <div className="kids-world-session__bottom">
           <div className="kids-world-session__mini-row">
-            {kidsMiniCards.map((card) => (
+            {profile.miniCards.map((card) => (
               <div
                 key={card.id}
                 className="kids-world-session__mini-card"
@@ -187,15 +240,15 @@ export function KidsWorldShowcasePanel({ onStatusChange }: KidsWorldShowcasePane
           </div>
 
           <div className="kids-world-session__callout">
-            <div className="kids-world-session__mascot">리리</div>
+            <div className="kids-world-session__mascot">{profile.assistantName}</div>
             <button type="button" className="kids-world-session__call-button">
-              리리 부르기
+              {profile.assistantActionLabel}
             </button>
           </div>
         </div>
 
         <div className="kids-world-session__selected">
-          <span>현재 선택</span>
+          <span>{profile.name} 현재 선택</span>
           <strong>{selectedPoster.title}</strong>
         </div>
       </section>

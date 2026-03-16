@@ -11,7 +11,7 @@ spring:
     password: ${DB_PASSWORD:12345}
   sql:
     init:
-      mode: always
+      mode: ${SPRING_SQL_INIT_MODE:always}
       schema-locations: classpath:schema.sql
       data-locations: classpath:data.sql
 

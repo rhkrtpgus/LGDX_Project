@@ -1,5 +1,6 @@
 drop table if exists alert_log cascade;
 drop table if exists child_watch_policy cascade;
+drop table if exists family_selection_preference cascade;
 drop table if exists viewing_history cascade;
 drop table if exists children cascade;
 drop table if exists report_daily cascade;
@@ -26,6 +27,20 @@ create table children (
     on delete cascade
 );
 
+create table family_selection_preference (
+  family_id int primary key,
+  selected_child_id int,
+  updated_at timestamp not null default current_timestamp,
+  constraint fk_family_selection_preference_family
+    foreign key (family_id)
+    references users (user_id)
+    on delete cascade,
+  constraint fk_family_selection_preference_child
+    foreign key (selected_child_id)
+    references children (child_id)
+    on delete set null
+);
+
 create table viewing_history (
   viewing_id int primary key,
   user_id int not null,
@@ -50,6 +65,15 @@ create table child_watch_policy (
   weekday_end_hour int not null default 21,
   weekend_start_hour int not null default 8,
   weekend_end_hour int not null default 22,
+  bedtime_lock_enabled boolean not null default false,
+  bedtime_hour int not null default 21,
+  monday_limit_minutes int not null default 120,
+  tuesday_limit_minutes int not null default 120,
+  wednesday_limit_minutes int not null default 120,
+  thursday_limit_minutes int not null default 120,
+  friday_limit_minutes int not null default 120,
+  saturday_limit_minutes int not null default 140,
+  sunday_limit_minutes int not null default 140,
   notification_threshold int not null default 70,
   auto_block_enabled boolean not null default true,
   updated_at timestamp not null default current_timestamp,
@@ -136,6 +160,9 @@ create table app_runtime_settings (
 
 create index idx_children_user_id
   on children (user_id);
+
+create index idx_family_selection_preference_child_id
+  on family_selection_preference (selected_child_id);
 
 create index idx_viewing_history_user_time
   on viewing_history (user_id, watch_time desc);
