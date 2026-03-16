@@ -846,11 +846,10 @@ export default function App() {
     <div data-profile-mode={profileMode} style={themeVars} className="app-root">
       <header className="global-topbar">
         <button type="button" className="global-home-logo" onClick={handleGoHome} aria-label="메인 페이지로 이동">
-          <img
-            className="global-home-logo__image"
-            src="/img/lg-smart-tv-wordmark.svg"
-            alt="LG Smart TV"
-          />
+          <span className="global-home-logo__wordmark" aria-hidden="true">
+            <span className="global-home-logo__lg">LG</span>
+            <span className="global-home-logo__smart">SMART TV</span>
+          </span>
         </button>
       </header>
 

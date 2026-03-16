@@ -40,7 +40,7 @@
 .global-home-logo {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: calc(var(--global-topbar-height) - 8px);
   padding: 0;
   border: none;
@@ -58,13 +58,29 @@
   outline: none;
 }
 
-.global-home-logo__image {
-  display: block;
-  width: clamp(240px, 28vw, 420px);
-  max-width: min(420px, 62vw);
-  height: calc(var(--global-topbar-height) - 10px);
-  object-fit: contain;
-  object-position: left center;
+.global-home-logo__wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: clamp(8px, 1vw, 14px);
+  white-space: nowrap;
+}
+
+.global-home-logo__lg {
+  font-family: "Arial Black", "Segoe UI", Arial, sans-serif;
+  font-size: clamp(28px, calc(var(--global-topbar-height) * 0.58), 40px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: #fff;
+}
+
+.global-home-logo__smart {
+  font-family: "Arial Black", "Segoe UI", Arial, sans-serif;
+  font-size: clamp(23px, calc(var(--global-topbar-height) * 0.5), 34px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  color: #fff;
 }
 
 .global-toast-stack {
