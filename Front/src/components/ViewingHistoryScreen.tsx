@@ -19,7 +19,7 @@ export function ViewingHistoryScreen({
   analysisHistory,
 }: ViewingHistoryScreenProps) {
   return (
-    <div className="screen screen--kids">
+    <div className="screen screen--history">
       <div className="vh-screen">
         <div className="vh-screen__hero">
           <span className="vh-screen__badge">TV 시청 리포트</span>

@@ -21,6 +21,16 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Landmark camera monitor environment:
+
+```powershell
+cd c:\Users\4121\Desktop\DX\LGDX_Project\FastAPI
+C:\Users\4121\AppData\Local\Programs\Python\Python311\python.exe -m venv .venv-monitor
+.venv-monitor\Scripts\Activate.ps1
+pip install -r requirements-monitor.txt
+pip install mediapipe==0.10.20 --no-deps
+```
+
 Camera collection on Windows:
 
 ```powershell
@@ -29,7 +39,7 @@ cd c:\Users\4121\Desktop\DX\LGDX_Project\FastAPI
 ```
 
 - This stops only the Docker `fastapi` service and keeps PostgreSQL/MongoDB running in Docker.
-- `addiction.py` then runs with the local virtualenv Python, so OpenCV can access the host camera directly.
+- `addiction.py` then runs with `.venv-monitor`, so OpenCV can access the host camera directly and MediaPipe landmarks stay available.
 - Front dev server should call FastAPI on `http://localhost:8000`.
 
 Recommended camera test flow:

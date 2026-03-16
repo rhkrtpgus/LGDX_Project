@@ -15,6 +15,11 @@ if (!(Test-Path $pythonExe)) {
   $pythonExe = "python"
 }
 
+$monitorPythonExe = Join-Path $projectRoot ".venv-monitor\Scripts\python.exe"
+if (!(Test-Path $monitorPythonExe)) {
+  $monitorPythonExe = $pythonExe
+}
+
 if ($StopDockerFastApi) {
   $dockerCompose = Join-Path $repoRoot "docker-compose.yml"
   if (Test-Path $dockerCompose) {
@@ -37,7 +42,7 @@ $process = Start-Process `
   -ArgumentList @(
     "-NoProfile",
     "-Command",
-    "`$env:ADDICTION_MONITOR_PYTHON_COMMAND='$pythonExe'; & '$pythonExe' -m uvicorn app.main:app --host 0.0.0.0 --port $Port"
+    "`$env:ADDICTION_MONITOR_PYTHON_COMMAND='$monitorPythonExe'; & '$pythonExe' -m uvicorn app.main:app --host 0.0.0.0 --port $Port"
   ) `
   -RedirectStandardOutput $stdout `
   -RedirectStandardError $stderr `

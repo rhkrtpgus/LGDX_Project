@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+
+Back/bootrun.log
+Back/bootrun-error.log
+Models/kids_monitor_dataset.csv
+
+FastAPI/.venv-monitor/
+FastAPI/.venv311-test/
+FastAPI/.venv-py311-main-partial/

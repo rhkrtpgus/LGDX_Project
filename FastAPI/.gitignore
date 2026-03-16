@@ -1,4 +1,7 @@
 .venv/
+.venv-monitor/
+.venv311-test/
+.venv-py311-main-partial/
 __pycache__/
 *.pyc
 .env
