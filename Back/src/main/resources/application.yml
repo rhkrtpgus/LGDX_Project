@@ -28,3 +28,4 @@ model:
   execution-timeout-seconds: ${MODEL_EXECUTION_TIMEOUT_SECONDS:600}
   addiction-script-name: ${MODEL_ADDICTION_SCRIPT_NAME:addiction.py}
   addiction-execution-timeout-seconds: ${MODEL_ADDICTION_TIMEOUT_SECONDS:60}
+  fastapi-base-url: ${MODEL_FASTAPI_BASE_URL:http://host.docker.internal:8000/fastapi}

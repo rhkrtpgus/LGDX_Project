@@ -1,4 +1,5 @@
 drop table if exists alert_log cascade;
+drop table if exists child_youtube_category_filter cascade;
 drop table if exists child_watch_policy cascade;
 drop table if exists family_selection_preference cascade;
 drop table if exists viewing_history cascade;
@@ -78,6 +79,18 @@ create table child_watch_policy (
   auto_block_enabled boolean not null default true,
   updated_at timestamp not null default current_timestamp,
   constraint fk_child_watch_policy_child
+    foreign key (child_id)
+    references children (child_id)
+    on delete cascade
+);
+
+create table child_youtube_category_filter (
+  child_id int not null,
+  category_id varchar(80) not null,
+  enabled boolean not null default true,
+  updated_at timestamp not null default current_timestamp,
+  primary key (child_id, category_id),
+  constraint fk_child_youtube_category_filter_child
     foreign key (child_id)
     references children (child_id)
     on delete cascade
@@ -175,6 +188,9 @@ create index idx_alert_log_viewing_id
 
 create index idx_child_watch_policy_child_id
   on child_watch_policy (child_id);
+
+create index idx_child_youtube_category_filter_child_id
+  on child_youtube_category_filter (child_id);
 
 create index idx_report_daily_family_id
   on report_daily (family_id);

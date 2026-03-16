@@ -2,6 +2,7 @@ package com.example.demo.repository;
 
 import com.example.demo.domain.AlertLogRecord;
 import com.example.demo.domain.ChildProfile;
+import com.example.demo.domain.ChildYoutubeCategoryFilterRecord;
 import com.example.demo.domain.ChildWatchPolicyRecord;
 import com.example.demo.domain.ViewingHistoryWriteRecord;
 import com.example.demo.dto.ParentAlertResponse;
@@ -22,6 +23,10 @@ public interface ParentControlMapper {
 	ChildWatchPolicyRecord findWatchPolicyByChildId(@Param("childId") int childId);
 
 	void upsertWatchPolicy(ChildWatchPolicyRecord record);
+
+	List<ChildYoutubeCategoryFilterRecord> findYoutubeCategoryFiltersByChildId(@Param("childId") int childId);
+
+	void upsertYoutubeCategoryFilter(ChildYoutubeCategoryFilterRecord record);
 
 	Integer sumTodayWatchMinutesByChildId(@Param("childId") int childId);
 

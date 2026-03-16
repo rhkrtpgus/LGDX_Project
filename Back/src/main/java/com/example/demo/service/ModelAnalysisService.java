@@ -12,11 +12,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -24,6 +32,8 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class ModelAnalysisService {
+
+	private static final Pattern YOUTUBE_VIDEO_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{6,20}$");
 
 	private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {
 	};
@@ -38,6 +48,8 @@ public class ModelAnalysisService {
 	private final long executionTimeoutSeconds;
 	private final String addictionScriptName;
 	private final long addictionExecutionTimeoutSeconds;
+	private final String fastapiBaseUrl;
+	private final HttpClient httpClient;
 
 	public ModelAnalysisService(
 		AnalysisHistoryMapper analysisHistoryMapper,
@@ -49,7 +61,8 @@ public class ModelAnalysisService {
 		@Value("${model.script-name}") String scriptName,
 		@Value("${model.execution-timeout-seconds}") long executionTimeoutSeconds,
 		@Value("${model.addiction-script-name}") String addictionScriptName,
-		@Value("${model.addiction-execution-timeout-seconds}") long addictionExecutionTimeoutSeconds
+		@Value("${model.addiction-execution-timeout-seconds}") long addictionExecutionTimeoutSeconds,
+		@Value("${model.fastapi-base-url}") String fastapiBaseUrl
 	) {
 		this.analysisHistoryMapper = analysisHistoryMapper;
 		this.runtimeSettingsService = runtimeSettingsService;
@@ -61,15 +74,24 @@ public class ModelAnalysisService {
 		this.executionTimeoutSeconds = executionTimeoutSeconds;
 		this.addictionScriptName = addictionScriptName;
 		this.addictionExecutionTimeoutSeconds = addictionExecutionTimeoutSeconds;
+		this.fastapiBaseUrl = fastapiBaseUrl;
+		this.httpClient = HttpClient.newHttpClient();
 	}
 
-	public AnalysisResponse analyzeYoutubeVideo(String videoUrl, Integer childId) {
-		RuntimeSettingsResponse runtimeSettings = runtimeSettingsService.getCurrent();
+	public AnalysisResponse analyzeYoutubeVideo(String videoId, Integer childId) {
+		try {
+			return analyzeViaFastApi(videoId, childId);
+		} catch (Exception ignored) {
+			// Fall back to the local Python process when FastAPI is unavailable.
+		}
+
 		AnalysisHistoryRecord record = new AnalysisHistoryRecord();
-		record.setInputUrl(videoUrl);
 		record.setCreatedAt(LocalDateTime.now());
 
 		try {
+			String videoUrl = buildYoutubeWatchUrl(videoId);
+			record.setInputUrl(videoUrl);
+			RuntimeSettingsResponse runtimeSettings = runtimeSettingsService.getCurrent();
 			ProcessResult processResult = runMainAnalysis(videoUrl);
 			JsonNode root = objectMapper.readTree(processResult.stdout());
 
@@ -104,6 +126,10 @@ public class ModelAnalysisService {
 			AddictionMonitorResponse addictionMonitor = runAddictionMonitor(videoUrl, runtimeSettings);
 			return toResponse(record, harmfulReasons, playback, addictionMonitor);
 		} catch (Exception exception) {
+			RuntimeSettingsResponse runtimeSettings = runtimeSettingsService.getCurrent();
+			if (!StringUtils.hasText(record.getInputUrl()) && StringUtils.hasText(videoId)) {
+				record.setInputUrl("https://www.youtube.com/watch?v=" + videoId.trim());
+			}
 			record.setStatus("FAILED");
 			record.setErrorMessage(trimToLength(exception.getMessage(), 4000));
 			record.setHarmful(false);
@@ -123,6 +149,87 @@ public class ModelAnalysisService {
 				buildSkippedMonitor(runtimeSettings, "메인 모델 분석이 실패하여 addiction.py는 실행하지 않았습니다.")
 			);
 		}
+	}
+
+	private String buildYoutubeWatchUrl(String videoId) {
+		if (!StringUtils.hasText(videoId)) {
+			throw new IllegalArgumentException("videoId는 필수입니다.");
+		}
+
+		String normalized = videoId.trim();
+		if (!YOUTUBE_VIDEO_ID_PATTERN.matcher(normalized).matches()) {
+			throw new IllegalArgumentException("유효하지 않은 YouTube videoId입니다.");
+		}
+
+		return "https://www.youtube.com/watch?v=" + normalized;
+	}
+
+	private AnalysisResponse analyzeViaFastApi(String videoId, Integer childId)
+		throws IOException, InterruptedException {
+		String normalizedVideoId = validateVideoId(videoId);
+		Map<String, Object> payloadMap = new HashMap<>();
+		payloadMap.put("videoId", normalizedVideoId);
+		payloadMap.put("saveResult", true);
+		payloadMap.put("requestSource", "spring");
+		if (childId != null) {
+			payloadMap.put("childId", childId);
+		}
+		String payload = objectMapper.writeValueAsString(payloadMap);
+
+		String target = fastapiBaseUrl.endsWith("/")
+			? fastapiBaseUrl + "analysis/youtube"
+			: fastapiBaseUrl + "/analysis/youtube";
+
+		HttpRequest request = HttpRequest.newBuilder()
+			.uri(URI.create(target))
+			.header("Content-Type", "application/json")
+			.POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+			.build();
+
+		HttpResponse<String> response = httpClient.send(
+			request,
+			HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+		);
+
+		if (response.statusCode() < 200 || response.statusCode() >= 300) {
+			throw new IllegalStateException(trimToLength(response.body(), 4000));
+		}
+
+		JsonNode root = objectMapper.readTree(response.body());
+		return new AnalysisResponse(
+			readLong(root, "analysisId"),
+			readText(root, "inputUrl"),
+			readText(root, "videoId"),
+			readText(root, "title"),
+			readText(root, "categoryNameKo"),
+			readInt(root, "durationSeconds"),
+			readBoolean(root, "shortForm"),
+			readBoolean(root, "blockedByCategory"),
+			readBoolean(root, "hasViolence"),
+			readDouble(root, "violenceScore"),
+			readInt(root, "violencePositiveWindows"),
+			readBoolean(root, "hasNudity"),
+			readInt(root, "nudityMatchCount"),
+			readBoolean(root, "harmful"),
+			extractStringList(root, "harmfulReasons"),
+			readPlayback(root.path("playback")),
+			readAddictionMonitor(root.path("addictionMonitor")),
+			readText(root, "status"),
+			readText(root, "errorMessage"),
+			readDateTime(root, "createdAt")
+		);
+	}
+
+	private String validateVideoId(String videoId) {
+		if (!StringUtils.hasText(videoId)) {
+			throw new IllegalArgumentException("videoId???꾩닔?낅땲??");
+		}
+
+		String normalized = videoId.trim();
+		if (!YOUTUBE_VIDEO_ID_PATTERN.matcher(normalized).matches()) {
+			throw new IllegalArgumentException("?좏슚?섏? ?딆? YouTube videoId?낅땲??");
+		}
+		return normalized;
 	}
 
 	public List<AnalysisResponse> findRecentHistory(int limit) {
@@ -245,6 +352,11 @@ public class ModelAnalysisService {
 		return child.isMissingNode() || child.isNull() ? null : child.asInt();
 	}
 
+	private Long readLong(JsonNode node, String fieldName) {
+		JsonNode child = node.path(fieldName);
+		return child.isMissingNode() || child.isNull() ? null : child.asLong();
+	}
+
 	private Double readDouble(JsonNode node, String fieldName) {
 		JsonNode child = node.path(fieldName);
 		return child.isMissingNode() || child.isNull() ? null : child.asDouble();
@@ -252,6 +364,48 @@ public class ModelAnalysisService {
 
 	private boolean readBoolean(JsonNode node, String fieldName) {
 		return node.path(fieldName).asBoolean(false);
+	}
+
+	private LocalDateTime readDateTime(JsonNode node, String fieldName) {
+		String value = readText(node, fieldName);
+		if (!StringUtils.hasText(value)) {
+			return null;
+		}
+
+		try {
+			return OffsetDateTime.parse(value).toLocalDateTime();
+		} catch (Exception ignored) {
+			return null;
+		}
+	}
+
+	private PlaybackDecisionResult readPlayback(JsonNode node) {
+		if (node == null || node.isMissingNode() || node.isNull()) {
+			return new PlaybackDecisionResult(false, "Playback data is not available.", 0, "UNKNOWN", List.of());
+		}
+
+		Double riskScore = readDouble(node, "addictionRiskScore");
+		return new PlaybackDecisionResult(
+			node.path("allowed").asBoolean(false),
+			readText(node, "message"),
+			riskScore == null ? 0 : (int) Math.round(riskScore),
+			readText(node, "addictionRiskLevel"),
+			extractStringList(node, "behaviorSignals")
+		);
+	}
+
+	private AddictionMonitorResponse readAddictionMonitor(JsonNode node) {
+		if (node == null || node.isMissingNode() || node.isNull()) {
+			return null;
+		}
+
+		return new AddictionMonitorResponse(
+			node.path("enabled").asBoolean(false),
+			node.path("consentGranted").asBoolean(false),
+			node.path("executed").asBoolean(false),
+			readText(node, "status"),
+			readText(node, "message")
+		);
 	}
 
 	private List<String> extractStringList(JsonNode node, String fieldName) {

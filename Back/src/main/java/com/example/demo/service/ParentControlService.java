@@ -2,6 +2,7 @@ package com.example.demo.service;
 
 import com.example.demo.domain.AlertLogRecord;
 import com.example.demo.domain.ChildProfile;
+import com.example.demo.domain.ChildYoutubeCategoryFilterRecord;
 import com.example.demo.domain.ChildWatchPolicyRecord;
 import com.example.demo.domain.ViewingHistoryWriteRecord;
 import com.example.demo.dto.ChildWatchPolicyRequest;
@@ -12,16 +13,24 @@ import com.example.demo.dto.ParentChildResponse;
 import com.example.demo.dto.ParentOverviewResponse;
 import com.example.demo.dto.ParentViewingHistoryResponse;
 import com.example.demo.dto.PlaybackDecisionResult;
+import com.example.demo.dto.PlaybackRecordRequest;
+import com.example.demo.dto.PlaybackRecordResponse;
+import com.example.demo.dto.YoutubeCategoryFilterRequest;
+import com.example.demo.dto.YoutubeCategoryFilterResponse;
 import com.example.demo.repository.ParentControlMapper;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class ParentControlService {
+
+	private static final Map<String, Boolean> DEFAULT_YOUTUBE_CATEGORY_SETTINGS = createDefaultYoutubeCategorySettings();
 
 	private final ParentControlMapper parentControlMapper;
 	private final MobileReportService mobileReportService;
@@ -138,6 +147,39 @@ public class ParentControlService {
 		return getWatchPolicy(child.childId());
 	}
 
+	public YoutubeCategoryFilterResponse getYoutubeCategoryFilter(int childId) {
+		ChildProfile child = getRequiredChild(childId);
+		return toYoutubeCategoryFilterResponse(child.childId(), resolveYoutubeCategoryFilters(child.childId()));
+	}
+
+	public YoutubeCategoryFilterResponse updateYoutubeCategoryFilter(YoutubeCategoryFilterRequest request) {
+		if (request.childId() == null) {
+			throw new IllegalArgumentException("childId는 필수입니다.");
+		}
+		if (!StringUtils.hasText(request.categoryId())) {
+			throw new IllegalArgumentException("categoryId는 필수입니다.");
+		}
+		if (request.enabled() == null) {
+			throw new IllegalArgumentException("enabled 값은 필수입니다.");
+		}
+
+		ChildProfile child = getRequiredChild(request.childId());
+		String normalizedCategoryId = request.categoryId().trim();
+		if (!DEFAULT_YOUTUBE_CATEGORY_SETTINGS.containsKey(normalizedCategoryId)) {
+			throw new IllegalArgumentException("지원하지 않는 YouTube 카테고리입니다: " + normalizedCategoryId);
+		}
+
+		resolveYoutubeCategoryFilters(child.childId());
+
+		ChildYoutubeCategoryFilterRecord next = new ChildYoutubeCategoryFilterRecord();
+		next.setChildId(child.childId());
+		next.setCategoryId(normalizedCategoryId);
+		next.setEnabled(request.enabled());
+		parentControlMapper.upsertYoutubeCategoryFilter(next);
+
+		return getYoutubeCategoryFilter(child.childId());
+	}
+
 	public List<ParentViewingHistoryResponse> getViewingHistory(
 		int familyId,
 		Integer childId,
@@ -162,8 +204,49 @@ public class ParentControlService {
 		List<String> harmfulReasons,
 		boolean shortForm
 	) {
+		return buildAndPersistPlaybackDecision(
+			childId,
+			videoId,
+			durationSeconds,
+			harmful,
+			harmfulReasons,
+			shortForm
+		).playback();
+	}
+
+	public PlaybackRecordResponse recordPlaybackFromAnalysis(PlaybackRecordRequest request) {
+		if (request.childId() == null) {
+			throw new IllegalArgumentException("childId는 필수입니다.");
+		}
+		if (!StringUtils.hasText(request.videoId())) {
+			throw new IllegalArgumentException("videoId는 필수입니다.");
+		}
+
+		LoggedPlaybackDecision logged = buildAndPersistPlaybackDecision(
+			request.childId(),
+			request.videoId(),
+			request.durationSeconds(),
+			Boolean.TRUE.equals(request.harmful()),
+			request.harmfulReasons() == null ? List.of() : request.harmfulReasons(),
+			Boolean.TRUE.equals(request.shortForm())
+		);
+
+		return new PlaybackRecordResponse(logged.viewingId(), logged.playback());
+	}
+
+	private LoggedPlaybackDecision buildAndPersistPlaybackDecision(
+		Integer childId,
+		String videoId,
+		Integer durationSeconds,
+		boolean harmful,
+		List<String> harmfulReasons,
+		boolean shortForm
+	) {
 		if (childId == null) {
-			return defaultPlaybackDecision(harmful, harmfulReasons, shortForm);
+			return new LoggedPlaybackDecision(
+				null,
+				defaultPlaybackDecision(harmful, harmfulReasons, shortForm)
+			);
 		}
 
 		ChildProfile child = getRequiredChild(childId);
@@ -225,7 +308,8 @@ public class ParentControlService {
 			message = "재생이 허용되었습니다. YouTube로 이동해 시청할 수 있습니다.";
 		}
 
-		int viewingId = createViewingRecord(child, videoId);
+		int estimatedWatchDurationSeconds = estimateWatchDurationSeconds(durationSeconds);
+		int viewingId = createViewingRecord(child, videoId, estimatedWatchDurationSeconds);
 		createAlertsIfNeeded(
 			viewingId,
 			policy,
@@ -236,12 +320,15 @@ public class ParentControlService {
 			message
 		);
 
-		return new PlaybackDecisionResult(
-			allowed,
-			message,
-			Math.min(100, riskScore),
-			riskLevel,
-			behaviorSignals
+		return new LoggedPlaybackDecision(
+			viewingId,
+			new PlaybackDecisionResult(
+				allowed,
+				message,
+				Math.min(100, riskScore),
+				riskLevel,
+				behaviorSignals
+			)
 		);
 	}
 
@@ -331,6 +418,58 @@ public class ParentControlService {
 		);
 	}
 
+	private List<ChildYoutubeCategoryFilterRecord> resolveYoutubeCategoryFilters(int childId) {
+		List<ChildYoutubeCategoryFilterRecord> existing = parentControlMapper.findYoutubeCategoryFiltersByChildId(childId);
+		Map<String, Boolean> currentSettings = new LinkedHashMap<>(DEFAULT_YOUTUBE_CATEGORY_SETTINGS);
+
+		for (ChildYoutubeCategoryFilterRecord record : existing) {
+			if (record.getCategoryId() != null && currentSettings.containsKey(record.getCategoryId())) {
+				currentSettings.put(record.getCategoryId(), Boolean.TRUE.equals(record.getEnabled()));
+			}
+		}
+
+		if (existing.size() < DEFAULT_YOUTUBE_CATEGORY_SETTINGS.size()) {
+			for (Map.Entry<String, Boolean> entry : currentSettings.entrySet()) {
+				boolean missing = existing.stream().noneMatch((record) -> entry.getKey().equals(record.getCategoryId()));
+				if (!missing) {
+					continue;
+				}
+
+				ChildYoutubeCategoryFilterRecord fallback = new ChildYoutubeCategoryFilterRecord();
+				fallback.setChildId(childId);
+				fallback.setCategoryId(entry.getKey());
+				fallback.setEnabled(entry.getValue());
+				parentControlMapper.upsertYoutubeCategoryFilter(fallback);
+			}
+			existing = parentControlMapper.findYoutubeCategoryFiltersByChildId(childId);
+		}
+
+		return existing;
+	}
+
+	private YoutubeCategoryFilterResponse toYoutubeCategoryFilterResponse(
+		int childId,
+		List<ChildYoutubeCategoryFilterRecord> records
+	) {
+		Map<String, Boolean> categorySettings = new LinkedHashMap<>(DEFAULT_YOUTUBE_CATEGORY_SETTINGS);
+		LocalDateTime updatedAt = null;
+
+		for (ChildYoutubeCategoryFilterRecord record : records) {
+			if (record.getCategoryId() != null && categorySettings.containsKey(record.getCategoryId())) {
+				categorySettings.put(record.getCategoryId(), Boolean.TRUE.equals(record.getEnabled()));
+			}
+			if (record.getUpdatedAt() != null && (updatedAt == null || record.getUpdatedAt().isAfter(updatedAt))) {
+				updatedAt = record.getUpdatedAt();
+			}
+		}
+
+		return new YoutubeCategoryFilterResponse(
+			childId,
+			categorySettings,
+			updatedAt
+		);
+	}
+
 	private boolean isViewingAllowed(ChildWatchPolicyRecord policy, LocalDateTime currentTime) {
 		DayOfWeek dayOfWeek = currentTime.getDayOfWeek();
 		boolean isWeekend = dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY;
@@ -408,16 +547,24 @@ public class ParentControlService {
 		return child;
 	}
 
-	private int createViewingRecord(ChildProfile child, String videoId) {
+	private int createViewingRecord(ChildProfile child, String videoId, int watchDurationSeconds) {
 		ViewingHistoryWriteRecord record = new ViewingHistoryWriteRecord();
 		record.setViewingId(defaultInt(parentControlMapper.nextViewingId()));
 		record.setUserId(child.userId());
 		record.setChildId(child.childId());
 		record.setVideoId(videoId);
 		record.setWatchTime(LocalDateTime.now());
-		record.setWatchDuration(0);
+		record.setWatchDuration(watchDurationSeconds);
 		parentControlMapper.insertViewingHistory(record);
 		return record.getViewingId();
+	}
+
+	private int estimateWatchDurationSeconds(Integer durationSeconds) {
+		if (durationSeconds == null || durationSeconds <= 0) {
+			return 60;
+		}
+
+		return Math.max(60, durationSeconds);
 	}
 
 	private void createAlertsIfNeeded(
@@ -465,5 +612,31 @@ public class ParentControlService {
 
 	private int defaultInt(Integer value) {
 		return value == null ? 0 : value;
+	}
+
+	private static Map<String, Boolean> createDefaultYoutubeCategorySettings() {
+		Map<String, Boolean> defaults = new LinkedHashMap<>();
+		defaults.put("film_animation", true);
+		defaults.put("autos_vehicles", true);
+		defaults.put("music", true);
+		defaults.put("pets_animals", true);
+		defaults.put("sports", true);
+		defaults.put("travel_events", true);
+		defaults.put("gaming", false);
+		defaults.put("people_blogs", true);
+		defaults.put("comedy", true);
+		defaults.put("entertainment", false);
+		defaults.put("news_politics", false);
+		defaults.put("howto_style", true);
+		defaults.put("education", true);
+		defaults.put("science_technology", true);
+		defaults.put("nonprofits_activism", true);
+		return defaults;
+	}
+
+	private record LoggedPlaybackDecision(
+		Integer viewingId,
+		PlaybackDecisionResult playback
+	) {
 	}
 }

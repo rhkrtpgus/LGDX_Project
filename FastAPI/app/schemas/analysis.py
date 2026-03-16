@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class AnalysisRequest(BaseModel):
-    video_url: str = Field(alias="videoUrl", min_length=1)
+    video_id: str = Field(alias="videoId", min_length=1)
     child_id: int | None = Field(default=None, alias="childId")
     request_source: str = Field(default="front", alias="requestSource")
     save_result: bool = Field(default=True, alias="saveResult")

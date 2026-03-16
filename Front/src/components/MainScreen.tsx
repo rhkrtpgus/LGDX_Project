@@ -7,7 +7,8 @@ import { summarizeAlert, summarizeHistoryItem } from '../lib/integration'
 
 type MainScreenProps = {
   onNavigate: (screen: ScreenId) => void
-  onOpenYoutubeCare: () => void
+  onRequestProtectedUrl: (url: string) => void
+  onRequestProtectedTv: () => void
   profiles: ChildProfile[]
   activeProfileId: string
   onSelectKidsProfile: (profileId: string) => void
@@ -56,7 +57,8 @@ const APP_LINKS = [
 
 export function MainScreen({
   onNavigate,
-  onOpenYoutubeCare,
+  onRequestProtectedUrl,
+  onRequestProtectedTv,
   profiles,
   activeProfileId,
   onSelectKidsProfile,
@@ -83,17 +85,12 @@ export function MainScreen({
   }
 
   function openAppLink(href: string) {
-    window.open(href, '_blank', 'noopener,noreferrer')
+    onRequestProtectedUrl(href)
   }
 
   function openThinQDashboard() {
     closeAll()
     onNavigate('thinq')
-  }
-
-  function openYoutubeCare() {
-    closeAll()
-    onOpenYoutubeCare()
   }
 
   function handleKidsSelect(profileId: string) {
@@ -136,9 +133,9 @@ export function MainScreen({
       ]
 
   const chipActions = [
-    { id: 'tv', label: 'TV 시청', color: '#3ECFBF', onClick: () => undefined },
+    { id: 'tv', label: 'TV 시청', color: '#3ECFBF', onClick: () => { closeAll(); onRequestProtectedTv() } },
     { id: 'family', label: '가족 보호', color: '#E07D5C', onClick: () => onNavigate('settings-family') },
-    { id: 'kids', label: '키즈 추천', color: '#B57BE8', onClick: () => handleKidsSelect(activeProfileId || profiles[0]?.id || 'child-1') },
+    { id: 'kids', label: '키즈 추천', color: '#B57BE8', onClick: () => { closeAll(); onNavigate('profile-select') } },
     { id: 'report', label: 'ThinQ 보기', color: '#4AAEF5', onClick: openThinQDashboard },
     { id: 'history', label: '시청 기록', color: '#8B8FA8', onClick: () => onNavigate('watch-history') },
   ] as const
@@ -148,7 +145,7 @@ export function MainScreen({
       id: `alert-${alert.alertId}`,
       label: alert.childName,
       title: alert.messageText,
-      meta: `${formatRiskLabel(alert.riskLevel)} · 지금 확인 가능`,
+      meta: `${formatRiskLabel(alert.riskLevel)} · 지금 바로 확인할 수 있어요`,
       tone: (alert.riskLevel ?? 'safe').toLowerCase(),
     }))
 
@@ -194,14 +191,9 @@ export function MainScreen({
     const appResults = APP_LINKS.map((app) => ({
       id: `app-${app.id}`,
       title: app.sub,
-      subtitle: app.id === 'youtube' ? '시청 전 확인 화면 열기' : '앱 바로 열기',
+      subtitle: app.id === 'youtube' ? '유튜브 PIN 확인 후 열기' : 'PIN 확인 후 열기',
       type: '앱',
       onSelect: () => {
-        if (app.id === 'youtube') {
-          openYoutubeCare()
-          return
-        }
-
         closeAll()
         openAppLink(app.href)
       },
@@ -259,7 +251,7 @@ export function MainScreen({
     return pool.filter((item) =>
       `${item.title} ${item.subtitle} ${item.type}`.toLowerCase().includes(query),
     )
-  }, [onNavigate, onOpenYoutubeCare, profiles, searchTerm])
+  }, [onNavigate, onRequestProtectedUrl, onRequestProtectedTv, profiles, searchTerm])
 
   const overlayOpen = panelOpen || alertPanelOpen || showAddModal || searchOpen
 
@@ -269,7 +261,7 @@ export function MainScreen({
       title: '아이들TV 바로가기',
       description: '예전에 보던 콘텐츠와 시청 흐름을 이어서 확인할 수 있어요.',
       image: '/img/img_thumbnail_big_01.png',
-      onClick: () => onNavigate('watch-history'),
+      onClick: () => onNavigate('profile-select'),
     },
     {
       id: 'report-hero',
@@ -337,7 +329,7 @@ export function MainScreen({
             <p className="wos-server-copy">{summarizeAlert(recentAlerts[0])}</p>
           </div>
           <div className="wos-server-card">
-            <span className="wos-server-kicker">보호 상태</span>
+            <span className="wos-server-kicker">서비스 상태</span>
             <strong className="wos-server-value">
               {serverLoading ? '불러오는 중' : serverError ? '확인 필요' : '연결 완료'}
             </strong>
@@ -367,7 +359,10 @@ export function MainScreen({
                 type="button"
                 className="wos-app-icon wos-app-link wos-app-link--button"
                 aria-label={`${app.sub} 열기`}
-                onClick={openYoutubeCare}
+                onClick={() => {
+                  closeAll()
+                  openAppLink(app.href)
+                }}
               >
                 <img src={app.image} alt={app.sub} />
                 <span className="wos-app-caption">{app.sub}</span>
@@ -379,6 +374,11 @@ export function MainScreen({
                 href={app.href}
                 target="_blank"
                 rel="noreferrer noopener"
+                onClick={(event) => {
+                  event.preventDefault()
+                  closeAll()
+                  openAppLink(app.href)
+                }}
                 aria-label={`${app.sub} 열기`}
               >
                 <img src={app.image} alt={app.sub} />
@@ -645,11 +645,11 @@ function NavIcon({ title, children, onClick }: { title: string; children: ReactN
 function formatRiskLabel(riskLevel?: string | null) {
   switch ((riskLevel ?? '').toUpperCase()) {
     case 'HIGH':
-      return '높음'
+      return '위험 높음'
     case 'MEDIUM':
-      return '보통'
+      return '주의 필요'
     case 'LOW':
-      return '낮음'
+      return '가벼운 안내'
     default:
       return '안정'
   }

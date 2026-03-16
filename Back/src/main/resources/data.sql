@@ -143,6 +143,40 @@ on conflict (child_id) do update set
   auto_block_enabled = excluded.auto_block_enabled,
   updated_at = excluded.updated_at;
 
+insert into child_youtube_category_filter (
+  child_id,
+  category_id,
+  enabled,
+  updated_at
+)
+select
+  c.child_id,
+  settings.category_id,
+  settings.enabled,
+  current_timestamp
+from children c
+cross join (
+  values
+    ('film_animation', true),
+    ('autos_vehicles', true),
+    ('music', true),
+    ('pets_animals', true),
+    ('sports', true),
+    ('travel_events', true),
+    ('gaming', false),
+    ('people_blogs', true),
+    ('comedy', true),
+    ('entertainment', false),
+    ('news_politics', false),
+    ('howto_style', true),
+    ('education', true),
+    ('science_technology', true),
+    ('nonprofits_activism', true)
+) as settings(category_id, enabled)
+on conflict (child_id, category_id) do update set
+  enabled = excluded.enabled,
+  updated_at = excluded.updated_at;
+
 insert into report_daily (report_id, family_id, compare_time, count_alert_type) values
   (1, 1, 1, 3),
   (2, 2, 1, 1),

@@ -56,6 +56,8 @@ export function ThinQScreen({
   onToggleAutoBlock,
   onUpdateWatchPolicy,
 }: ThinQScreenProps) {
+  const localizedDailySummary = localizeReportSummary(dailySummary)
+  const localizedAlertSummary = localizeReportSummary(alertSummary)
   const healthChips = systemHealth
     ? [
         { label: 'TV 서비스', value: systemHealth.backend.status === 'UP' ? '정상' : '확인 필요' },
@@ -100,8 +102,8 @@ export function ThinQScreen({
           <div className="thinq-insights">
             <div className="thinq-insight-card">
               <span className="thinq-insight-kicker">오늘 요약</span>
-              <strong>{dailySummary}</strong>
-              <p>{alertSummary}</p>
+              <strong>{localizedDailySummary}</strong>
+              <p>{localizedAlertSummary}</p>
             </div>
             <div className="thinq-insight-card">
               <span className="thinq-insight-kicker">보호 설정</span>
@@ -160,7 +162,7 @@ export function ThinQScreen({
                           bedtimeLockEnabled: !child.watchPolicy.bedtimeLockEnabled,
                         })}
                       >
-                        취침 잠금 {child.watchPolicy.bedtimeLockEnabled ? 'ON' : 'OFF'}
+                        취침 잠금 {child.watchPolicy.bedtimeLockEnabled ? '켜짐' : '꺼짐'}
                       </button>
                     </div>
                   </div>
@@ -268,6 +270,21 @@ export function ThinQScreen({
       <div className="auto-bar running" />
     </div>
   )
+}
+
+function localizeReportSummary(summary: string) {
+  if (!summary) {
+    return ''
+  }
+
+  return summary
+    .replace(/^Watch time is up by /i, '시청 시간이 ')
+    .replace(/^Alert count is lower by /i, '알림 수가 ')
+    .replace(/^Alert count is up by /i, '알림 수가 ')
+    .replace(/^Alert count is stable compared with the usual pattern\.$/i, '알림 수는 평소 흐름과 비슷해요.')
+    .replace(/ min \(([-\d]+)%\) against the usual baseline\./i, '분 증가했고, 평소 기준과 비교해 $1% 변화했어요.')
+    .replace(/ lower by (\d+) compared with the usual baseline\./i, '$1건 줄었어요.')
+    .replace(/ up by (\d+) compared with the usual baseline\./i, '$1건 늘었어요.')
 }
 
 function buildContentMix(analysisHistory: AnalysisResponse[]) {

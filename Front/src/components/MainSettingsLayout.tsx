@@ -39,6 +39,8 @@ type Props = {
   serverError: string | null
   youtubeCategorySettings: YoutubeCategorySettings
   onUpdateYoutubeCategory: (categoryId: YoutubeCategoryId, enabled: boolean) => void
+  parentPin: string
+  onUpdateParentPin: (nextPin: string) => void
 }
 
 const NAV_ITEMS: Array<{ id: NavId; label: string; sub: string }> = [
@@ -69,6 +71,8 @@ export function MainSettingsLayout({
   serverError,
   youtubeCategorySettings,
   onUpdateYoutubeCategory,
+  parentPin,
+  onUpdateParentPin,
 }: Props) {
   const [activeNav, setActiveNav] = useState<NavId>(initialSection)
   const [familyDetailId, setFamilyDetailId] = useState<string | null>(null)
@@ -139,6 +143,8 @@ export function MainSettingsLayout({
                   childSummaries={childSummaries}
                   activeProfileId={activeProfileId}
                   onOpenDetail={setFamilyDetailId}
+                  parentPin={parentPin}
+                  onUpdateParentPin={onUpdateParentPin}
                 />
               )}
               {activeNav === 'youtube' && (
@@ -265,12 +271,21 @@ function FamilyPanel({
   childSummaries,
   activeProfileId,
   onOpenDetail,
+  parentPin,
+  onUpdateParentPin,
 }: {
   profiles: ChildProfile[]
   childSummaries: ParentChildResponse[]
   activeProfileId: string
   onOpenDetail: (id: string) => void
+  parentPin: string
+  onUpdateParentPin: (nextPin: string) => void
 }) {
+  const [currentPin, setCurrentPin] = useState('')
+  const [nextPin, setNextPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [pinMessage, setPinMessage] = useState<string | null>(null)
+
   const cards = useMemo(() => profiles.map((profile) => {
     const child = childSummaries.find((item) => `child-${item.childId}` === profile.id)
     const dailyLimit = child?.watchPolicy.dailyLimitMinutes ?? profile.timeLimit
@@ -334,6 +349,54 @@ function FamilyPanel({
           ))}
         </div>
       </div>
+      <div className="msl-card">
+        <SectionHeader title="부모 PIN 설정" />
+        <p className="msl-empty-copy">앱과 TV 시청 진입 전 확인하는 부모 PIN입니다.</p>
+        <div className="msl-pin-grid">
+          <label className="msl-pin-field">
+            <span>현재 PIN</span>
+            <input value={currentPin} onChange={(event) => setCurrentPin(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} placeholder="4자리" />
+          </label>
+          <label className="msl-pin-field">
+            <span>새 PIN</span>
+            <input value={nextPin} onChange={(event) => setNextPin(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} placeholder="4자리" />
+          </label>
+          <label className="msl-pin-field">
+            <span>새 PIN 확인</span>
+            <input value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} placeholder="4자리" />
+          </label>
+        </div>
+        <div className="msl-pin-row">
+          <span className="msl-status-chip">현재 PIN: {'*'.repeat(parentPin.length)}</span>
+          <button
+            type="button"
+            className="msl-pin-save"
+            onClick={() => {
+              if (currentPin !== parentPin) {
+                setPinMessage('현재 PIN이 맞지 않아요.')
+                return
+              }
+              if (!/^\d{4}$/.test(nextPin)) {
+                setPinMessage('새 PIN은 숫자 4자리로 입력해 주세요.')
+                return
+              }
+              if (nextPin !== confirmPin) {
+                setPinMessage('새 PIN 확인 값이 다릅니다.')
+                return
+              }
+
+              onUpdateParentPin(nextPin)
+              setCurrentPin('')
+              setNextPin('')
+              setConfirmPin('')
+              setPinMessage('부모 PIN을 저장했어요.')
+            }}
+          >
+            PIN 저장
+          </button>
+        </div>
+        {pinMessage && <p className="msl-empty-copy">{pinMessage}</p>}
+      </div>
     </div>
   )
 }
@@ -390,11 +453,21 @@ function HistoryPanel({
   recentAlerts: ParentAlertResponse[]
   analysisHistory: AnalysisResponse[]
 }) {
+  const thinqMobileUrl = import.meta.env.VITE_THINQ_UI_URL ?? 'http://localhost:4174/'
+
   return (
     <div className="msl-content">
       <h2 className="msl-panel-title">시청 기록</h2>
       <div className="msl-card">
         <SectionHeader title="TV 시청 리포트" />
+        <button
+          type="button"
+          className="msl-pin-save"
+          style={{ marginBottom: 16, alignSelf: 'flex-start' }}
+          onClick={() => window.open(thinqMobileUrl, '_blank', 'noopener,noreferrer')}
+        >
+          모바일 TV 시청 리포트 열기
+        </button>
         <ViewingHistoryPanel
           familyName={familyName}
           viewingHistory={viewingHistory}

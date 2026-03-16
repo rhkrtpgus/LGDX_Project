@@ -8,11 +8,16 @@ import com.example.demo.dto.ParentAlertResponse;
 import com.example.demo.dto.ParentChildResponse;
 import com.example.demo.dto.ParentOverviewResponse;
 import com.example.demo.dto.ParentViewingHistoryResponse;
+import com.example.demo.dto.PlaybackRecordRequest;
+import com.example.demo.dto.PlaybackRecordResponse;
+import com.example.demo.dto.YoutubeCategoryFilterRequest;
+import com.example.demo.dto.YoutubeCategoryFilterResponse;
 import com.example.demo.service.FamilySelectionPreferenceService;
 import com.example.demo.service.ParentControlService;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -85,6 +90,35 @@ public class ParentControlController {
 	public ChildWatchPolicyResponse updateWatchPolicy(@RequestBody ChildWatchPolicyRequest request) {
 		try {
 			return parentControlService.updateWatchPolicy(request);
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(BAD_REQUEST, exception.getMessage(), exception);
+		}
+	}
+
+	@GetMapping("/youtube-category-filter")
+	public YoutubeCategoryFilterResponse getYoutubeCategoryFilter(@RequestParam int childId) {
+		try {
+			return parentControlService.getYoutubeCategoryFilter(childId);
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(BAD_REQUEST, exception.getMessage(), exception);
+		}
+	}
+
+	@PatchMapping("/youtube-category-filter")
+	public YoutubeCategoryFilterResponse updateYoutubeCategoryFilter(
+		@RequestBody YoutubeCategoryFilterRequest request
+	) {
+		try {
+			return parentControlService.updateYoutubeCategoryFilter(request);
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(BAD_REQUEST, exception.getMessage(), exception);
+		}
+	}
+
+	@PostMapping("/playback-record")
+	public PlaybackRecordResponse recordPlayback(@RequestBody PlaybackRecordRequest request) {
+		try {
+			return parentControlService.recordPlaybackFromAnalysis(request);
 		} catch (IllegalArgumentException exception) {
 			throw new ResponseStatusException(BAD_REQUEST, exception.getMessage(), exception);
 		}

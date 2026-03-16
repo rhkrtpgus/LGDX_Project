@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
 
 import type { ScreenId } from './data/kidsProfileFlow'
@@ -19,11 +19,14 @@ import {
   getRuntimeSettings,
   getSelection,
   getSystemHealth,
+  getYoutubeCategoryFilter,
   getViewingHistory,
+  recordPlaybackFromAnalysis,
   startAddictionMonitor,
   stopAddictionMonitor,
   updateRuntimeSettings,
   updateSelection,
+  updateYoutubeCategoryFilter,
   updateWatchPolicy,
   type AnalysisResponse,
   type MonitorControlResponse,
@@ -59,6 +62,8 @@ import { ViewingHistoryScreen } from './components/ViewingHistoryScreen'
 import { ProfileCreateFormScreen } from './components/ProfileCreateFormScreen'
 import { PinScreen } from './components/PinScreen'
 import { YoutubeCareScreen } from './components/YoutubeCareScreen'
+import { ProfileSelectScreen } from './components/ProfileSelectScreen'
+import { TvLiveScreen } from './components/TvLiveScreen'
 
 export { getThemeByAge }
 export type { ChildProfile }
@@ -66,10 +71,12 @@ export type { ChildProfile }
 export type ProfileMode = 'adult' | 'kids'
 
 const FAMILY_ID = 1
-const YOUTUBE_CATEGORY_STORAGE_KEY = 'lg-smart-tv.youtube-category-settings'
 const TOAST_DURATION_MS = 60_000
 const BLINK_WARNING_THRESHOLD_BPM = 10
+const BLINK_GUIDANCE_DURATION_MS = 30_000
 const BUBBLE_BURST_DURATION_MS = 1100
+const PARENT_PIN_STORAGE_KEY = 'lgdx-parent-pin'
+const YOUTUBE_CATEGORY_STORAGE_KEY = 'lgdx-youtube-category-settings'
 
 type ToastTone = 'info' | 'warning' | 'danger' | 'success'
 
@@ -80,6 +87,7 @@ type AlertToast = {
   tone: ToastTone
   sourceKey: string
   createdAt: number
+  durationMs?: number
 }
 
 type BlinkBubbleState = 'hidden' | 'rising' | 'bursting'
@@ -91,9 +99,22 @@ type KidsCarePopup = {
   showBubbles: boolean
 }
 
+type PendingPinAction =
+  | { kind: 'navigate'; screen: ScreenId }
+  | { kind: 'open-url'; url: string }
+
+function loadStoredParentPin() {
+  if (typeof window === 'undefined') {
+    return '1234'
+  }
+
+  const saved = window.localStorage.getItem(PARENT_PIN_STORAGE_KEY)?.trim()
+  return /^\d{4}$/.test(saved ?? '') ? saved! : '1234'
+}
+
 function formatRemainingMinutesLabel(minutes: number): string {
   if (minutes <= 0) {
-    return '시청 시간이 다 되었어요'
+    return '시청 시간이 모두 끝났어요'
   }
 
   if (minutes < 60) {
@@ -124,8 +145,8 @@ function buildKidsCarePopup(
     case 'watch_time_90m':
       return {
         trigger: normalizedTrigger,
-        title: '시청 시간을 확인해 볼까요?',
-        message: `오늘 시청시간이 ${formatRemainingMinutesLabel(remainingMinutes)}`,
+        title: '오늘 시청 시간을 확인해 볼까요?',
+        message: `오늘 시청 시간은 ${formatRemainingMinutesLabel(remainingMinutes)}`,
         showBubbles: false,
       }
     case 'stretch':
@@ -139,7 +160,7 @@ function buildKidsCarePopup(
       return {
         trigger: normalizedTrigger,
         title: '눈을 한 번 깜박여 주세요',
-        message: '눈이 조금 지쳐 보여요. 눈을 천천히 깜박이면 비눗방울이 사라져요.',
+        message: '눈이 조금 지쳐 보여요. 천천히 한 번 깜박이면 비눗방울이 사라져요.',
         showBubbles: true,
       }
     case 'blink_high':
@@ -153,7 +174,7 @@ function buildKidsCarePopup(
       return {
         trigger: normalizedTrigger,
         title: '화면을 정면으로 봐 주세요',
-        message: '고개를 바르게 두면 더 편하게 볼 수 있어요.',
+        message: '고개를 바르게 하면 더 편안하게 볼 수 있어요.',
         showBubbles: false,
       }
     case 'distance_near':
@@ -224,25 +245,48 @@ function normalizeChildResponse(child: ParentChildResponse): ParentChildResponse
   }
 }
 
-function loadYoutubeCategorySettings(): YoutubeCategorySettings {
+function buildDefaultYoutubeCategorySettings(): YoutubeCategorySettings {
+  return { ...DEFAULT_YOUTUBE_CATEGORY_SETTINGS }
+}
+
+function normalizeYoutubeCategorySettings(
+  categorySettings: Record<string, boolean> | null | undefined,
+): YoutubeCategorySettings {
+  return {
+    ...DEFAULT_YOUTUBE_CATEGORY_SETTINGS,
+    ...(categorySettings ?? {}),
+  } as YoutubeCategorySettings
+}
+
+function loadStoredYoutubeCategorySettings() {
   if (typeof window === 'undefined') {
-    return DEFAULT_YOUTUBE_CATEGORY_SETTINGS
+    return {} as Record<number, YoutubeCategorySettings>
   }
 
   try {
     const raw = window.localStorage.getItem(YOUTUBE_CATEGORY_STORAGE_KEY)
     if (!raw) {
-      return DEFAULT_YOUTUBE_CATEGORY_SETTINGS
+      return {} as Record<number, YoutubeCategorySettings>
     }
 
-    const parsed = JSON.parse(raw) as Partial<YoutubeCategorySettings>
-    return {
-      ...DEFAULT_YOUTUBE_CATEGORY_SETTINGS,
-      ...parsed,
-    }
+    const parsed = JSON.parse(raw) as Record<string, Record<string, boolean>>
+    return Object.fromEntries(
+      Object.entries(parsed).map(([childId, settings]) => [
+        Number(childId),
+        normalizeYoutubeCategorySettings(settings),
+      ]),
+    ) as Record<number, YoutubeCategorySettings>
   } catch {
-    return DEFAULT_YOUTUBE_CATEGORY_SETTINGS
+    return {} as Record<number, YoutubeCategorySettings>
   }
+}
+
+function persistYoutubeCategorySettings(settingsByChildId: Record<number, YoutubeCategorySettings>) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(YOUTUBE_CATEGORY_STORAGE_KEY, JSON.stringify(settingsByChildId))
 }
 
 export default function App() {
@@ -251,6 +295,9 @@ export default function App() {
   const [activeProfileId, setActiveProfileId] = useState<string>(DEFAULT_PROFILES[0].id)
   const [sharedMode, setSharedMode] = useState(false)
   const [profileMode, setProfileMode] = useState<ProfileMode>('adult')
+  const [parentPin, setParentPin] = useState(loadStoredParentPin)
+  const [pendingPinAction, setPendingPinAction] = useState<PendingPinAction | null>(null)
+  const [pinCancelScreen, setPinCancelScreen] = useState<ScreenId>('main')
 
   const [familyOverview, setFamilyOverview] = useState<ParentOverviewResponse | null>(null)
   const [children, setChildren] = useState<ParentChildResponse[]>([])
@@ -266,15 +313,32 @@ export default function App() {
   const [monitorPending, setMonitorPending] = useState(false)
   const [serverLoading, setServerLoading] = useState(true)
   const [serverError, setServerError] = useState<string | null>(null)
-  const [youtubeCategorySettings, setYoutubeCategorySettings] = useState<YoutubeCategorySettings>(() => loadYoutubeCategorySettings())
+  const [youtubeCategorySettingsByChildId, setYoutubeCategorySettingsByChildId] = useState<Record<number, YoutubeCategorySettings>>(loadStoredYoutubeCategorySettings)
   const [alertToasts, setAlertToasts] = useState<AlertToast[]>([])
   const [blinkBubbleState, setBlinkBubbleState] = useState<BlinkBubbleState>('hidden')
   const seenToastKeysRef = useRef<Set<string>>(new Set())
+  const countedToastMetricKeysRef = useRef<Set<string>>(new Set())
   const blinkBubbleTimerRef = useRef<number | null>(null)
+  const blinkBubbleMaxTimerRef = useRef<number | null>(null)
+  const lowBlinkBubbleEpisodeShownRef = useRef(false)
+  const lowBlinkToastEpisodeShownRef = useRef(false)
 
   const navigate = useCallback((screen: ScreenId) => {
     setCurrentScreen(screen)
   }, [])
+
+  const updateParentPin = useCallback((nextPin: string) => {
+    setParentPin(nextPin)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(PARENT_PIN_STORAGE_KEY, nextPin)
+    }
+  }, [])
+
+  const requestParentPin = useCallback((action: PendingPinAction, cancelScreen: ScreenId = currentScreen) => {
+    setPendingPinAction(action)
+    setPinCancelScreen(cancelScreen)
+    setCurrentScreen('pin')
+  }, [currentScreen])
 
   const handleGoHome = useCallback(() => {
     setProfileMode('adult')
@@ -318,7 +382,7 @@ export default function App() {
       setAnalysisHistory(modelHistory)
       setActiveProfileId(prev => nextProfiles.some(profile => profile.id === prev) ? prev : selectedProfileId)
     } catch (error) {
-      const message = error instanceof Error ? error.message : '서비스 정보를 불러오지 못했습니다.'
+      const message = error instanceof Error ? error.message : '서비스 정보를 불러오지 못했어요.'
       setServerError(message)
     } finally {
       setServerLoading(false)
@@ -359,12 +423,8 @@ export default function App() {
   }, [activeProfileId, children.length])
 
   useEffect(() => {
-    window.localStorage.setItem(YOUTUBE_CATEGORY_STORAGE_KEY, JSON.stringify(youtubeCategorySettings))
-  }, [youtubeCategorySettings])
-
-  useEffect(() => {
     const timer = window.setInterval(() => {
-      setAlertToasts((prev) => prev.filter((toast) => Date.now() - toast.createdAt < TOAST_DURATION_MS))
+      setAlertToasts((prev) => prev.filter((toast) => Date.now() - toast.createdAt < (toast.durationMs ?? TOAST_DURATION_MS)))
     }, 1000)
 
     return () => window.clearInterval(timer)
@@ -374,12 +434,50 @@ export default function App() {
     if (blinkBubbleTimerRef.current != null) {
       window.clearTimeout(blinkBubbleTimerRef.current)
     }
+    if (blinkBubbleMaxTimerRef.current != null) {
+      window.clearTimeout(blinkBubbleMaxTimerRef.current)
+    }
   }, [])
 
   const activeBackendChild = useMemo(
     () => children.find((child) => profileIdFromChildId(child.childId) === activeProfileId) ?? null,
     [activeProfileId, children],
   )
+
+  const youtubeCategorySettings = useMemo(
+    () => activeBackendChild?.childId != null
+      ? youtubeCategorySettingsByChildId[activeBackendChild.childId] ?? buildDefaultYoutubeCategorySettings()
+      : buildDefaultYoutubeCategorySettings(),
+    [activeBackendChild?.childId, youtubeCategorySettingsByChildId],
+  )
+
+  useEffect(() => {
+    if (!activeBackendChild?.childId) {
+      return
+    }
+
+    if (youtubeCategorySettingsByChildId[activeBackendChild.childId]) {
+      return
+    }
+
+    void getYoutubeCategoryFilter(activeBackendChild.childId)
+      .then((response) => {
+        setYoutubeCategorySettingsByChildId((prev) => ({
+          ...prev,
+          [activeBackendChild.childId]: normalizeYoutubeCategorySettings(response.categorySettings),
+        }))
+      })
+      .catch(() => {
+        setYoutubeCategorySettingsByChildId((prev) => ({
+          ...prev,
+          [activeBackendChild.childId]: prev[activeBackendChild.childId] ?? buildDefaultYoutubeCategorySettings(),
+        }))
+      })
+  }, [activeBackendChild?.childId, youtubeCategorySettingsByChildId])
+
+  useEffect(() => {
+    persistYoutubeCategorySettings(youtubeCategorySettingsByChildId)
+  }, [youtubeCategorySettingsByChildId])
 
   const activeChildAlerts = useMemo(
     () => recentAlerts.filter((alert) => alert.childId === activeBackendChild?.childId),
@@ -407,7 +505,7 @@ export default function App() {
 
     return {
       title: '눈을 천천히 깜박여 주세요',
-      message: `${Math.round(monitorLive.blinkBpm)}회/분으로 감지됐어요. 눈을 한 번 깜박이면 비눗방울이 톡 터져요.`,
+      message: `${Math.round(monitorLive.blinkBpm)}회/분으로 감지됐어요. 눈이 피곤할 수 있으니 천천히 한 번 깜박여 주세요.`,
       sourceKey: `blink-guidance:${activeBackendChild?.childId ?? 'unknown'}`,
     }
   }, [activeBackendChild?.childId, monitorLive])
@@ -426,13 +524,40 @@ export default function App() {
 
   useEffect(() => {
     if (kidsCarePopup?.showBubbles) {
+      if (lowBlinkBubbleEpisodeShownRef.current) {
+        return
+      }
+
+      lowBlinkBubbleEpisodeShownRef.current = true
+
       if (blinkBubbleTimerRef.current != null) {
         window.clearTimeout(blinkBubbleTimerRef.current)
         blinkBubbleTimerRef.current = null
       }
+      if (blinkBubbleMaxTimerRef.current != null) {
+        window.clearTimeout(blinkBubbleMaxTimerRef.current)
+      }
 
-      setBlinkBubbleState((prev) => (prev === 'hidden' ? 'rising' : prev))
+      setBlinkBubbleState('rising')
+      blinkBubbleMaxTimerRef.current = window.setTimeout(() => {
+        setBlinkBubbleState('bursting')
+        if (blinkBubbleTimerRef.current != null) {
+          window.clearTimeout(blinkBubbleTimerRef.current)
+        }
+        blinkBubbleTimerRef.current = window.setTimeout(() => {
+          setBlinkBubbleState('hidden')
+          blinkBubbleTimerRef.current = null
+        }, BUBBLE_BURST_DURATION_MS)
+        blinkBubbleMaxTimerRef.current = null
+      }, BLINK_GUIDANCE_DURATION_MS)
       return
+    }
+
+    lowBlinkBubbleEpisodeShownRef.current = false
+    lowBlinkToastEpisodeShownRef.current = false
+    if (blinkBubbleMaxTimerRef.current != null) {
+      window.clearTimeout(blinkBubbleMaxTimerRef.current)
+      blinkBubbleMaxTimerRef.current = null
     }
 
     setBlinkBubbleState((prev) => {
@@ -544,7 +669,7 @@ export default function App() {
           : child
       )))
     } catch (error) {
-      const message = error instanceof Error ? error.message : '시청 시간 제한 저장에 실패했습니다.'
+      const message = error instanceof Error ? error.message : '시청 시간 제한 저장에 실패했어요.'
       setServerError(message)
     }
   }, [children])
@@ -568,7 +693,7 @@ export default function App() {
           : child
       )))
     } catch (error) {
-      const message = error instanceof Error ? error.message : '가족 보호 설정 변경에 실패했습니다.'
+      const message = error instanceof Error ? error.message : '가족 보호 설정 변경에 실패했어요.'
       setServerError(message)
     }
   }, [children])
@@ -600,7 +725,7 @@ export default function App() {
           : profile
       )))
     } catch (error) {
-      const message = error instanceof Error ? error.message : '가족 보호 설정 저장에 실패했습니다.'
+      const message = error instanceof Error ? error.message : '가족 보호 설정 저장에 실패했어요.'
       setServerError(message)
     }
   }, [children])
@@ -611,9 +736,9 @@ export default function App() {
     setProfileMode('kids')
   }, [])
 
-  const handleAnalyzeYoutube = useCallback(async (videoUrl: string) => {
+  const handleAnalyzeYoutube = useCallback(async (videoId: string) => {
     if (!activeBackendChild?.childId) {
-      setServerError('유튜브 확인을 시작하려면 자녀 프로필이 먼저 선택되어야 합니다.')
+      setServerError('유튜브 확인을 시작하려면 자녀 프로필을 먼저 선택해 주세요.')
       return
     }
 
@@ -643,27 +768,52 @@ export default function App() {
         )))
       }
 
-      const result = await analyzeYoutube(videoUrl, activeBackendChild.childId)
-      setLatestAnalysis(result)
-      setAnalysisHistory((prev) => [result, ...prev].slice(0, 8))
+      const result = await analyzeYoutube(videoId, activeBackendChild.childId)
+      let syncedResult = result
 
-      if (result.playback.allowed) {
+      if (result.source !== 'spring') {
+        try {
+          const recordedPlayback = await recordPlaybackFromAnalysis({
+            childId: activeBackendChild.childId,
+            videoId: result.videoId ?? videoId,
+            durationSeconds: result.durationSeconds,
+            harmful: result.harmful,
+            harmfulReasons: result.harmfulReasons,
+            shortForm: result.shortForm,
+          })
+          syncedResult = {
+            ...result,
+            playback: recordedPlayback.playback,
+          }
+          await loadIntegratedData()
+        } catch (recordError) {
+          const message = recordError instanceof Error ? recordError.message : '시청 기록 저장에 실패했어요.'
+          setServerError(message)
+        }
+      } else {
+        await loadIntegratedData()
+      }
+
+      setLatestAnalysis(syncedResult)
+      setAnalysisHistory((prev) => [syncedResult, ...prev].slice(0, 8))
+
+      if (syncedResult.playback.allowed) {
         const monitor = await startAddictionMonitor(
-          videoUrl,
+          videoId,
           activeBackendChild.childId,
-          result.analysisId ?? null,
+          syncedResult.analysisId ?? null,
         )
         setActiveMonitor(monitor)
       } else {
         setActiveMonitor(null)
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : '영상 확인에 실패했습니다.'
+      const message = error instanceof Error ? error.message : '영상 확인에 실패했어요.'
       setServerError(message)
     } finally {
       setAnalysisPending(false)
     }
-  }, [activeBackendChild, runtimeSettings])
+  }, [activeBackendChild, loadIntegratedData, runtimeSettings])
 
   const handleStopAddictionMonitor = useCallback(async () => {
     if (!activeBackendChild?.childId && !activeMonitor?.sessionId) {
@@ -679,7 +829,7 @@ export default function App() {
       )
       setActiveMonitor(result)
     } catch (error) {
-      const message = error instanceof Error ? error.message : '카메라 종료 요청에 실패했습니다.'
+      const message = error instanceof Error ? error.message : '카메라 종료 요청에 실패했어요.'
       setServerError(message)
     } finally {
       setMonitorPending(false)
@@ -692,17 +842,48 @@ export default function App() {
       setRuntimeSettings(nextSettings)
       setSystemHealth((prev) => prev ? { ...prev, runtimeSettings: nextSettings } : prev)
     } catch (error) {
-      const message = error instanceof Error ? error.message : '보호 설정 저장에 실패했습니다.'
+      const message = error instanceof Error ? error.message : '보호 설정 저장에 실패했어요.'
       setServerError(message)
     }
   }, [])
 
   const handleYoutubeCategoryChange = useCallback((categoryId: YoutubeCategoryId, enabled: boolean) => {
-    setYoutubeCategorySettings((prev) => ({
-      ...prev,
+    if (!activeBackendChild?.childId) {
+      return
+    }
+
+    const childId = activeBackendChild.childId
+    const previousSettings = youtubeCategorySettingsByChildId[childId] ?? buildDefaultYoutubeCategorySettings()
+    const nextSettings = {
+      ...previousSettings,
       [categoryId]: enabled,
+    }
+
+    setYoutubeCategorySettingsByChildId((prev) => ({
+      ...prev,
+      [childId]: nextSettings,
     }))
-  }, [])
+
+    void updateYoutubeCategoryFilter(childId, categoryId, enabled)
+      .then((response) => {
+        setYoutubeCategorySettingsByChildId((prev) => ({
+          ...prev,
+          [childId]: normalizeYoutubeCategorySettings(response.categorySettings),
+        }))
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'youtube category update failed'
+        if (message.includes('404')) {
+          setServerError('YouTube 카테고리 설정은 현재 이 PC에서만 저장되어 적용됩니다.')
+          return
+        }
+        setYoutubeCategorySettingsByChildId((prev) => ({
+          ...prev,
+          [childId]: previousSettings,
+        }))
+        setServerError(message)
+      })
+  }, [activeBackendChild?.childId, youtubeCategorySettingsByChildId])
 
   const activeKidsProfile = profiles.find((profile) => profile.id === activeProfileId)
   const kidsTheme = activeKidsProfile ? getThemeByAge(activeKidsProfile.age) : null
@@ -746,12 +927,8 @@ export default function App() {
       }
     }
 
-    if (lowBlinkGuidance) {
-      keys.add(lowBlinkGuidance.sourceKey)
-    }
-
     return keys
-  }, [latestAnalysis, lowBlinkGuidance, recentAlerts, serverError, youtubeCategorySettings])
+  }, [latestAnalysis, recentAlerts, serverError, youtubeCategorySettings])
 
   useEffect(() => {
     setAlertToasts((prev) => prev.filter((toast) => activeToastSourceKeys.has(toast.sourceKey)))
@@ -816,7 +993,7 @@ export default function App() {
             sourceKey,
             title: '시청 확인 알림',
             message: categoryBlocked
-              ? `${latestAnalysis.categoryNameKo ?? '해당 카테고리'} 시청이 현재 필터에서 제한되어 있어요.`
+              ? `${latestAnalysis.categoryNameKo ?? '해당 카테고리'} 시청은 현재 필터에서 제한되어 있어요.`
               : latestAnalysis.playback.message,
             tone: !latestAnalysis.playback.allowed ? 'danger' : riskTone === 'HIGH' ? 'warning' : 'info',
             createdAt: Date.now(),
@@ -825,8 +1002,9 @@ export default function App() {
       }
     }
 
-    if (lowBlinkGuidance && !seenToastKeysRef.current.has(lowBlinkGuidance.sourceKey)) {
+    if (lowBlinkGuidance && !lowBlinkToastEpisodeShownRef.current && !seenToastKeysRef.current.has(lowBlinkGuidance.sourceKey)) {
       seenToastKeysRef.current.add(lowBlinkGuidance.sourceKey)
+      lowBlinkToastEpisodeShownRef.current = true
       nextToasts.push({
         id: `toast-${lowBlinkGuidance.sourceKey}`,
         sourceKey: lowBlinkGuidance.sourceKey,
@@ -834,11 +1012,15 @@ export default function App() {
         message: lowBlinkGuidance.message,
         tone: 'warning',
         createdAt: Date.now(),
+        durationMs: BLINK_GUIDANCE_DURATION_MS,
       })
     }
 
     if (nextToasts.length > 0) {
       setAlertToasts((prev) => [...nextToasts, ...prev].slice(0, 4))
+      nextToasts.forEach((toast) => {
+        countedToastMetricKeysRef.current.add(toast.sourceKey)
+      })
     }
   }, [activeToastSourceKeys, latestAnalysis, lowBlinkGuidance, recentAlerts, serverError, youtubeCategorySettings])
 
@@ -921,7 +1103,8 @@ export default function App() {
       {currentScreen === 'main' && (
         <MainScreen
           onNavigate={navigate}
-          onOpenYoutubeCare={() => navigate('youtube-care')}
+          onRequestProtectedUrl={(url) => requestParentPin({ kind: 'open-url', url }, 'main')}
+          onRequestProtectedTv={() => requestParentPin({ kind: 'navigate', screen: 'tv-live' }, 'main')}
           profiles={profiles}
           activeProfileId={activeProfileId}
           onSelectKidsProfile={handleSelectKidsProfile}
@@ -932,6 +1115,14 @@ export default function App() {
           recentHistory={viewingHistory}
           serverLoading={serverLoading}
           serverError={serverError}
+        />
+      )}
+
+      {currentScreen === 'profile-select' && (
+        <ProfileSelectScreen
+          profiles={profiles}
+          onSelectProfile={handleSelectKidsProfile}
+          onNavigate={navigate}
         />
       )}
 
@@ -950,8 +1141,8 @@ export default function App() {
         <ThinQScreen
           onBack={() => navigate(profileMode === 'kids' ? 'kids-main' : 'main')}
           familyName={familyName}
-          dailySummary={familyOverview?.report.daily.watchSummary ?? '리포트가 준비되는 중입니다.'}
-          alertSummary={familyOverview?.report.daily.alertSummary ?? '최근 경고가 없습니다.'}
+          dailySummary={familyOverview?.report.daily.watchSummary ?? '리포트를 준비하고 있어요.'}
+          alertSummary={familyOverview?.report.daily.alertSummary ?? '최근 경고가 없어요.'}
           recentAlerts={recentAlerts}
           analysisHistory={analysisHistory}
           runtimeSettings={runtimeSettings}
@@ -971,6 +1162,9 @@ export default function App() {
           recentAlerts={recentAlerts}
           analysisHistory={analysisHistory}
         />
+      )}
+      {currentScreen === 'tv-live' && (
+        <TvLiveScreen onBack={handleGoHome} />
       )}
       {currentScreen === 'youtube-care' && (
         <YoutubeCareScreen
@@ -1034,9 +1228,30 @@ export default function App() {
 
       {currentScreen === 'pin' && (
         <PinScreen
-          onNavigate={navigate}
-          onSuccess={() => { setProfileMode('adult'); navigate('main') }}
-          onCancel={() => navigate('kids-main')}
+          expectedPin={parentPin}
+          helperText="설정 > 가족 보호에서 부모 PIN을 바꿀 수 있어요"
+          onSuccess={() => {
+            const action = pendingPinAction
+            setPendingPinAction(null)
+            setProfileMode('adult')
+
+            if (!action) {
+              navigate('main')
+              return
+            }
+
+            if (action.kind === 'open-url') {
+              window.open(action.url, '_blank', 'noopener,noreferrer')
+              navigate('main')
+              return
+            }
+
+            navigate(action.screen)
+          }}
+          onCancel={() => {
+            setPendingPinAction(null)
+            navigate(pendingPinAction ? pinCancelScreen : 'kids-main')
+          }}
         />
       )}
 
@@ -1066,6 +1281,8 @@ export default function App() {
           serverError={serverError}
           youtubeCategorySettings={youtubeCategorySettings}
           onUpdateYoutubeCategory={handleYoutubeCategoryChange}
+          parentPin={parentPin}
+          onUpdateParentPin={updateParentPin}
         />
       )}
     </div>
@@ -1125,3 +1342,4 @@ function mapCategoryNameToId(categoryName: string): YoutubeCategoryId | null {
       return null
   }
 }
+

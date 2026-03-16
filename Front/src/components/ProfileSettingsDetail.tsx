@@ -75,7 +75,7 @@ function areDayLimitsEqual(left: Record<string, number>, right: Record<string, n
 const CAM_FEATURES = [
   {
     key: 'posture' as const,
-    label: 'AI 자세 교정',
+    label: '인공지능 자세 교정',
     sub_on:  '구부정한 자세 감지 시 화면 알림을 보냅니다',
     sub_off: '자세가 나빠지면 알림으로 바른 자세를 유도합니다',
     emoji: '🦴',
@@ -379,7 +379,7 @@ export function ProfileSettingsDetail({
                   onClick={() => { setBedtime(v => !v); setIsDirty(true) }}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBedtime(v => !v); setIsDirty(true) } }}
                   tabIndex={0}>
-                  {bedtimeOn ? 'ON' : 'OFF'}
+                  {bedtimeOn ? '켜짐' : '꺼짐'}
                 </button>
               </div>
             </div>
@@ -507,7 +507,7 @@ export function ProfileSettingsDetail({
               <span className="psd-card-icon">📷</span>
               <div>
                 <p className="psd-card-title">스마트캠 케어</p>
-                <p className="psd-card-sub">AI 자세·눈·거리 감지 — 카메라가 연결된 경우 작동</p>
+                <p className="psd-card-sub">인공지능 자세·눈·거리 감지 — 카메라가 연결된 경우 작동</p>
               </div>
             </div>
 

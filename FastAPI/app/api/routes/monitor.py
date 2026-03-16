@@ -85,7 +85,7 @@ def get_active_monitor_route(
 def start_monitor_route(payload: MonitorStartRequest) -> MonitorControlResponse:
     try:
         return start_background_monitor(
-            video_url=payload.video_url,
+            video_id=payload.video_id,
             child_id=payload.child_id,
             analysis_id=payload.analysis_id,
         )

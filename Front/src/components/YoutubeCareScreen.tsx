@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { ScreenId } from '../data/kidsProfileFlow'
 import {
   getEnabledYoutubeCategories,
   isYoutubeCategoryAllowed,
-  YOUTUBE_CATEGORY_OPTIONS,
-  YOUTUBE_QUICK_PICKS,
   type YoutubeCategorySettings,
 } from '../data/youtubeExperience'
 import {
   analyzeYoutube,
+  getRelatedYoutubeVideos,
+  searchYoutubeVideos,
   type AnalysisResponse,
   type MonitorControlResponse,
   type MonitorLiveResponse,
@@ -17,6 +17,7 @@ import {
   type ParentViewingHistoryResponse,
   type RuntimeSettingsResponse,
   type SystemHealthResponse,
+  type YoutubeVideoCatalogItem,
 } from '../lib/api'
 import { formatMinutes, getRiskTone, summarizeAlert, summarizeHistoryItem } from '../lib/integration'
 
@@ -32,13 +33,29 @@ type Props = {
   systemHealth: SystemHealthResponse | null
   serverLoading: boolean
   youtubeCategorySettings: YoutubeCategorySettings
-  onAnalyzeYoutube: (videoUrl: string) => Promise<void> | void
+  onAnalyzeYoutube: (videoId: string) => Promise<void> | void
   analysisPending: boolean
   activeMonitor: MonitorControlResponse | null
   monitorLive: MonitorLiveResponse | null
   monitorPending: boolean
   onStopAddictionMonitor: () => Promise<void> | void
 }
+
+type ModeratedVideo = {
+  item: YoutubeVideoCatalogItem
+  analysis: AnalysisResponse
+  reasons: string[]
+}
+
+type ModerationSummary = {
+  total: number
+  passed: number
+  blocked: number
+  pending: number
+}
+
+const DEFAULT_QUERY = '공룡'
+const MAX_CATALOG_ITEMS = 10
 
 export function YoutubeCareScreen({
   onBack,
@@ -59,224 +76,282 @@ export function YoutubeCareScreen({
   monitorPending,
   onStopAddictionMonitor,
 }: Props) {
-  const [activeCategoryId, setActiveCategoryId] = useState<string>('all')
-  const [selectedYoutubeId, setSelectedYoutubeId] = useState(YOUTUBE_QUICK_PICKS[0]?.id ?? '')
-  const [submittedUrl, setSubmittedUrl] = useState(YOUTUBE_QUICK_PICKS[0]?.url ?? '')
-  const [validatedResults, setValidatedResults] = useState<Record<string, AnalysisResponse>>({})
-  const [validationPending, setValidationPending] = useState(false)
-  const autoTriggeredUrlRef = useRef<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState(DEFAULT_QUERY)
+  const [submittedQuery, setSubmittedQuery] = useState(DEFAULT_QUERY)
+  const [searchCatalog, setSearchCatalog] = useState<YoutubeVideoCatalogItem[]>([])
+  const [searchModeration, setSearchModeration] = useState<Record<string, AnalysisResponse>>({})
+  const [searchPending, setSearchPending] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [selectedVideo, setSelectedVideo] = useState<YoutubeVideoCatalogItem | null>(null)
+  const [relatedCatalog, setRelatedCatalog] = useState<YoutubeVideoCatalogItem[]>([])
+  const [relatedModeration, setRelatedModeration] = useState<Record<string, AnalysisResponse>>({})
+  const [relatedPending, setRelatedPending] = useState(false)
+  const [relatedError, setRelatedError] = useState<string | null>(null)
+  const searchRunIdRef = useRef(0)
+  const relatedRunIdRef = useRef(0)
+  const autoSearchDoneRef = useRef<number | null>(null)
+  const playerSectionRef = useRef<HTMLElement | null>(null)
 
   const allowedCategories = useMemo(
     () => getEnabledYoutubeCategories(youtubeCategorySettings),
     [youtubeCategorySettings],
   )
 
-  const quickPicks = useMemo(() => {
-    const allowed = YOUTUBE_QUICK_PICKS.filter((pick) => youtubeCategorySettings[pick.categoryId])
+  const evaluateCatalog = useCallback((
+    items: YoutubeVideoCatalogItem[],
+    moderationMap: Record<string, AnalysisResponse>,
+  ) => {
+    const visible: ModeratedVideo[] = []
+    const hidden: ModeratedVideo[] = []
 
-    if (activeCategoryId === 'all') {
-      return allowed.slice(0, 6)
-    }
-
-    return allowed
-      .filter((pick) => pick.categoryId === activeCategoryId)
-      .slice(0, 6)
-  }, [activeCategoryId, youtubeCategorySettings])
-
-  useEffect(() => {
-    setValidatedResults({})
-    setSelectedYoutubeId('')
-    setSubmittedUrl('')
-    autoTriggeredUrlRef.current = null
-  }, [activeChild?.childId])
-
-  useEffect(() => {
-    if (allowedCategories.length === 0) {
-      setActiveCategoryId('all')
-      return
-    }
-
-    if (activeCategoryId === 'all') {
-      return
-    }
-
-    const hasActiveCategory = allowedCategories.some((category) => category.id === activeCategoryId)
-    if (!hasActiveCategory) {
-      setActiveCategoryId(allowedCategories[0].id)
-    }
-  }, [activeCategoryId, allowedCategories])
-
-  useEffect(() => {
-    if (quickPicks.length === 0) {
-      autoTriggeredUrlRef.current = null
-      return
-    }
-
-    const current = quickPicks.find((pick) => pick.id === selectedYoutubeId) ?? quickPicks[0]
-    if (!current) {
-      return
-    }
-
-    if (current.id !== selectedYoutubeId) {
-      setSelectedYoutubeId(current.id)
-    }
-
-    if (submittedUrl !== current.url) {
-      setSubmittedUrl(current.url)
-    }
-  }, [quickPicks, selectedYoutubeId, submittedUrl])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function validateRecommendedPicks() {
-      if (!activeChild?.childId || quickPicks.length === 0) {
+    items.forEach((item) => {
+      const analysis = moderationMap[item.videoId]
+      if (!analysis) {
         return
       }
 
-      const targets = quickPicks.filter((pick) => !validatedResults[pick.url])
-      if (targets.length === 0) {
+      const reasons = buildBlockedReasons(analysis, youtubeCategorySettings, activeChild)
+      const video = { item, analysis, reasons }
+      if (reasons.length === 0) {
+        visible.push(video)
         return
       }
 
-      setValidationPending(true)
+      hidden.push(video)
+    })
 
-      try {
-        for (const pick of targets) {
-          if (cancelled) {
-            return
-          }
-
-          const result = await analyzeYoutube(pick.url, activeChild.childId)
-          if (cancelled) {
-            return
-          }
-
-          setValidatedResults((prev) => ({
-            ...prev,
-            [pick.url]: result,
-          }))
-        }
-      } finally {
-        if (!cancelled) {
-          setValidationPending(false)
-        }
-      }
+    const summary: ModerationSummary = {
+      total: items.length,
+      passed: visible.length,
+      blocked: hidden.length,
+      pending: Math.max(items.length - visible.length - hidden.length, 0),
     }
 
-    void validateRecommendedPicks()
-
-    return () => {
-      cancelled = true
+    return {
+      visible,
+      hidden,
+      summary,
     }
-  }, [activeChild?.childId, quickPicks, validatedResults])
+  }, [activeChild, youtubeCategorySettings])
 
-  const visibleQuickPicks = useMemo(
-    () => quickPicks.filter((pick) => {
-      const result = validatedResults[pick.url]
-      if (!result) {
-        return false
-      }
-
-      return result.playback.allowed && !result.harmful && !result.blockedByCategory
-    }),
-    [quickPicks, validatedResults],
+  const searchEvaluation = useMemo(
+    () => evaluateCatalog(searchCatalog, searchModeration),
+    [evaluateCatalog, searchCatalog, searchModeration],
   )
 
-  const hiddenQuickPicks = useMemo(
-    () => quickPicks
-      .map((pick) => ({
-        pick,
-        result: validatedResults[pick.url],
-      }))
-      .filter(({ result }) => Boolean(result) && (!result!.playback.allowed || result!.harmful || result!.blockedByCategory)),
-    [quickPicks, validatedResults],
+  const relatedEvaluation = useMemo(
+    () => evaluateCatalog(relatedCatalog, relatedModeration),
+    [evaluateCatalog, relatedCatalog, relatedModeration],
   )
 
-  const validationSummary = useMemo(() => ({
-    total: quickPicks.length,
-    passed: visibleQuickPicks.length,
-    blocked: hiddenQuickPicks.length,
-    pending: Math.max(quickPicks.length - visibleQuickPicks.length - hiddenQuickPicks.length, 0),
-  }), [hiddenQuickPicks.length, quickPicks.length, visibleQuickPicks.length])
+  const selectedModeration = useMemo(() => {
+    if (!selectedVideo) {
+      return null
+    }
 
-  const selectedYoutubePick = visibleQuickPicks.find((pick) => pick.id === selectedYoutubeId) ?? visibleQuickPicks[0] ?? null
+    if (latestAnalysis?.videoId === selectedVideo.videoId) {
+      return latestAnalysis
+    }
 
-  const blockedByUserCategory = latestAnalysis?.categoryNameKo
-    ? !isYoutubeCategoryAllowed(latestAnalysis.categoryNameKo, youtubeCategorySettings)
-    : false
+    return searchModeration[selectedVideo.videoId] ?? relatedModeration[selectedVideo.videoId] ?? null
+  }, [latestAnalysis, relatedModeration, searchModeration, selectedVideo])
 
-  const canOpenAnalyzedVideo = Boolean(
-    latestAnalysis?.playback.allowed
-    && !blockedByUserCategory
-    && submittedUrl.length > 0,
+  const selectedBlockedReasons = useMemo(
+    () => selectedModeration ? buildBlockedReasons(selectedModeration, youtubeCategorySettings, activeChild) : [],
+    [activeChild, selectedModeration, youtubeCategorySettings],
   )
 
-  const guidanceLabel = latestAnalysis
-    ? latestAnalysis.playback.addictionRiskLevel === 'HIGH'
-      ? '오래 시청했을 수 있어 잠깐 쉬는 시간을 권장해요.'
-      : latestAnalysis.playback.addictionRiskLevel === 'MEDIUM'
-        ? '보호자와 함께 보는 흐름으로 이어가면 좋아요.'
-        : '현재 설정 기준으로는 안정적으로 시청할 수 있어요.'
+  const hasSelectedVideo = Boolean(selectedVideo)
+  const canPlaySelectedVideo = Boolean(selectedVideo && selectedBlockedReasons.length === 0)
+  const playerEmbedUrl = selectedVideo
+    ? `https://www.youtube.com/embed/${selectedVideo.videoId}?autoplay=1&rel=0&modestbranding=1`
     : null
 
   const healthStatus = useMemo(() => {
     if (!systemHealth) {
-      return '상태를 확인하고 있어요.'
+      return '검색과 검열 상태를 불러오고 있어요.'
     }
 
-    return [
+    const allUp = [
       systemHealth.backend.status,
       systemHealth.database.status,
       systemHealth.mainModel.status,
       systemHealth.addictionModel.status,
     ].every((status) => status === 'UP')
-      ? '시청 케어 연결이 준비됐어요.'
-      : '일부 연결 상태를 다시 확인해 주세요.'
+
+    return allUp ? '검색 API와 인공지능 검열이 모두 준비되었습니다.' : '일부 연결 상태를 다시 확인해 주세요.'
   }, [systemHealth])
 
+  const runCatalogModeration = useCallback(async (
+    items: YoutubeVideoCatalogItem[],
+    runId: number,
+    mode: 'search' | 'related',
+  ) => {
+    if (!activeChild?.childId) {
+      return
+    }
+
+    for (const item of items.slice(0, MAX_CATALOG_ITEMS)) {
+      const analysis = await analyzeYoutube(item.videoId, activeChild.childId, {
+        saveResult: false,
+        requestSource: mode === 'search' ? 'youtube-search' : 'youtube-related',
+      })
+
+      if ((mode === 'search' && runId !== searchRunIdRef.current) || (mode === 'related' && runId !== relatedRunIdRef.current)) {
+        return
+      }
+
+      if (mode === 'search') {
+        setSearchModeration((prev) => ({
+          ...prev,
+          [item.videoId]: analysis,
+        }))
+      } else {
+        setRelatedModeration((prev) => ({
+          ...prev,
+          [item.videoId]: analysis,
+        }))
+      }
+    }
+  }, [activeChild?.childId])
+
+  const runSearch = useCallback(async (query: string) => {
+    if (!activeChild?.childId) {
+      setSearchError('먼저 자녀 프로필을 선택해 주세요.')
+      return
+    }
+
+    const trimmed = query.trim()
+    if (!trimmed) {
+      setSearchCatalog([])
+      setSearchModeration({})
+      setSearchError('검색어를 입력해 주세요.')
+      return
+    }
+
+    const runId = searchRunIdRef.current + 1
+    searchRunIdRef.current = runId
+    setSubmittedQuery(trimmed)
+    setSearchPending(true)
+    setSearchError(null)
+    setSearchCatalog([])
+    setSearchModeration({})
+    setSelectedVideo(null)
+    setRelatedCatalog([])
+    setRelatedModeration({})
+    setRelatedError(null)
+
+    try {
+      const response = await searchYoutubeVideos(trimmed, MAX_CATALOG_ITEMS)
+      if (runId !== searchRunIdRef.current) {
+        return
+      }
+
+      setSearchCatalog(response.items)
+      await runCatalogModeration(response.items, runId, 'search')
+    } catch (error) {
+      if (runId !== searchRunIdRef.current) {
+        return
+      }
+      setSearchError(error instanceof Error ? error.message : '유튜브 검색을 불러오지 못했습니다.')
+    } finally {
+      if (runId === searchRunIdRef.current) {
+        setSearchPending(false)
+      }
+    }
+  }, [activeChild?.childId, runCatalogModeration])
+
+  const runRelated = useCallback(async (video: YoutubeVideoCatalogItem) => {
+    if (!activeChild?.childId) {
+      return
+    }
+
+    const runId = relatedRunIdRef.current + 1
+    relatedRunIdRef.current = runId
+    setRelatedPending(true)
+    setRelatedError(null)
+    setRelatedCatalog([])
+    setRelatedModeration({})
+
+    try {
+      const response = await getRelatedYoutubeVideos(video.videoId, MAX_CATALOG_ITEMS)
+      if (runId !== relatedRunIdRef.current) {
+        return
+      }
+
+      const nextItems = response.items.filter((item) => item.videoId !== video.videoId)
+      setRelatedCatalog(nextItems)
+      await runCatalogModeration(nextItems, runId, 'related')
+    } catch (error) {
+      if (runId !== relatedRunIdRef.current) {
+        return
+      }
+      setRelatedError(error instanceof Error ? error.message : '관련 영상을 불러오지 못했습니다.')
+    } finally {
+      if (runId === relatedRunIdRef.current) {
+        setRelatedPending(false)
+      }
+    }
+  }, [activeChild?.childId, runCatalogModeration])
+
   useEffect(() => {
-    if (!activeChild?.childId || analysisPending || visibleQuickPicks.length === 0) {
+    autoSearchDoneRef.current = null
+    setSearchCatalog([])
+    setSearchModeration({})
+    setSelectedVideo(null)
+    setRelatedCatalog([])
+    setRelatedModeration({})
+  }, [activeChild?.childId])
+
+  useEffect(() => {
+    if (!activeChild?.childId) {
       return
     }
 
-    const current = visibleQuickPicks.find((pick) => pick.id === selectedYoutubeId) ?? visibleQuickPicks[0]
-    if (!current) {
+    if (autoSearchDoneRef.current === activeChild.childId) {
       return
     }
 
-    if (autoTriggeredUrlRef.current === current.url) {
+    autoSearchDoneRef.current = activeChild.childId
+    void runSearch(DEFAULT_QUERY)
+  }, [activeChild?.childId, runSearch])
+
+  useEffect(() => {
+    if (!selectedVideo) {
       return
     }
 
-    autoTriggeredUrlRef.current = current.url
-    setSelectedYoutubeId(current.id)
-    setSubmittedUrl(current.url)
-    void onAnalyzeYoutube(current.url)
-  }, [activeChild?.childId, analysisPending, onAnalyzeYoutube, selectedYoutubeId, visibleQuickPicks])
+    void runRelated(selectedVideo)
+  }, [runRelated, selectedVideo])
 
-  function handleQuickPickClick(videoId: string) {
-    const nextPick = visibleQuickPicks.find((pick) => pick.id === videoId)
-    if (!nextPick) {
+  useEffect(() => {
+    if (!selectedVideo) {
       return
     }
 
-    setSelectedYoutubeId(nextPick.id)
-    setSubmittedUrl(nextPick.url)
-    void onAnalyzeYoutube(nextPick.url)
-  }
+    playerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [selectedVideo])
+
+  const handleSearchSubmit = useCallback((event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault()
+    void runSearch(searchQuery)
+  }, [runSearch, searchQuery])
+
+  const handleVideoSelect = useCallback((video: YoutubeVideoCatalogItem) => {
+    setSelectedVideo(video)
+    void onAnalyzeYoutube(video.videoId)
+  }, [onAnalyzeYoutube])
 
   return (
     <div className="screen youtube-care-screen">
-      <div className="youtube-care-page">
-        <div className="youtube-care-hero">
+      <div className="youtube-care-page youtube-care-page--search">
+        <section className="youtube-care-hero youtube-care-hero--search">
           <div>
-            <span className="youtube-care-kicker">유튜브 시청 전 확인</span>
-            <h2>유튜브에 들어가기 전에 먼저 걸러드릴게요.</h2>
+            <span className="youtube-care-kicker">유튜브 시청 전 검색 검열</span>
+            <h2>검색 결과와 관련 영상을 먼저 걸러서 안전한 영상만 보여드릴게요.</h2>
             <p>
-              {activeChild
-                ? `${activeChild.childName} 기준으로 추천 영상 링크를 먼저 검사하고, 통과한 영상만 보여드리고 있어요.`
-                : '자녀 프로필이 선택되면 유튜브 확인과 시청 케어를 바로 시작할 수 있어요.'}
+              검색 결과를 가져온 뒤 카테고리 필터와 인공지능 유해성 분석을 순서대로 적용하고,
+              통과한 영상만 재생 화면과 추천 목록에 남깁니다.
             </p>
           </div>
           <div className="youtube-care-hero__actions">
@@ -287,275 +362,349 @@ export function YoutubeCareScreen({
               유튜브 필터 보기
             </button>
           </div>
-        </div>
+        </section>
 
-        <div className="youtube-care-summary">
-          <div className="youtube-care-summary__card">
-            <span>현재 자녀</span>
-            <strong>{activeChild?.childName ?? '선택 필요'}</strong>
-            <p>하루 제한 {formatMinutes(activeChild?.watchPolicy.dailyLimitMinutes)}</p>
+        <section className="youtube-care-search">
+          <form className="youtube-care-search__form" onSubmit={handleSearchSubmit}>
+            <label className="youtube-care-search__label" htmlFor="youtube-search-input">검색어</label>
+            <div className="youtube-care-search__bar">
+              <input
+                id="youtube-search-input"
+                className="youtube-care-search__input"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="공룡, 동화, 교육 영상처럼 검색해 보세요"
+              />
+              <button type="submit" className="youtube-care-search__button" disabled={searchPending}>
+                {searchPending ? '검열 중' : '검색'}
+              </button>
+            </div>
+          </form>
+
+          <div className="youtube-care-summary">
+            <div className="youtube-care-summary__card">
+              <span>현재 자녀</span>
+              <strong>{activeChild?.childName ?? '선택 필요'}</strong>
+              <p>일일 시청 제한 {formatMinutes(activeChild?.watchPolicy.dailyLimitMinutes)}</p>
+            </div>
+            <div className="youtube-care-summary__card">
+              <span>허용 카테고리</span>
+              <strong>{allowedCategories.length}개</strong>
+              <p>{allowedCategories.map((category) => category.shortLabel).join(' · ') || '아직 허용된 카테고리가 없어요.'}</p>
+            </div>
+            <div className="youtube-care-summary__card">
+              <span>검열 상태</span>
+              <strong>{searchPending || relatedPending || analysisPending ? '검열 진행 중' : serverLoading ? '불러오는 중' : healthStatus}</strong>
+              <p>
+                검색 결과 → 인공지능 검열 → 재생창 재생 → 관련 영상 재검열 흐름으로 동작합니다.
+                시청 케어는 {runtimeSettings?.addictionMonitorEnabled ? '켜짐' : '꺼짐'} 상태예요.
+              </p>
+            </div>
           </div>
-          <div className="youtube-care-summary__card">
-            <span>허용 카테고리</span>
-            <strong>{allowedCategories.length}개</strong>
-            <p>{allowedCategories.map((category) => category.shortLabel).join(' · ') || '아직 선택된 카테고리가 없어요.'}</p>
-          </div>
-          <div className="youtube-care-summary__card">
-            <span>검사 상태</span>
-            <strong>{analysisPending || validationPending ? '확인 중' : serverLoading ? '불러오는 중' : healthStatus}</strong>
-            <p>NudeNet, Violent, 카테고리 필터를 통과한 영상만 남겨두고 있어요.</p>
-          </div>
-        </div>
+        </section>
 
         <section className="youtube-care-status-board">
           <article className="youtube-care-status-card youtube-care-status-card--pending">
-            <span>검사 대상</span>
-            <strong>{validationSummary.total}개</strong>
-            <p>현재 카테고리에서 가져온 추천 링크</p>
+            <span>검색 결과</span>
+            <strong>{searchEvaluation.summary.total}개</strong>
+            <p>{submittedQuery} 검색어로 가져온 후보 영상</p>
           </article>
           <article className="youtube-care-status-card youtube-care-status-card--ok">
             <span>통과</span>
-            <strong>{validationSummary.passed}개</strong>
-            <p>바로 볼 수 있는 추천 영상</p>
+            <strong>{searchEvaluation.summary.passed}개</strong>
+            <p>안전하다고 판단되어 화면에 남은 영상</p>
           </article>
           <article className="youtube-care-status-card youtube-care-status-card--blocked">
             <span>숨김</span>
-            <strong>{validationSummary.blocked}개</strong>
-            <p>유해성 또는 카테고리 기준으로 제외된 영상</p>
+            <strong>{searchEvaluation.summary.blocked}개</strong>
+            <p>유해성 또는 카테고리 기준으로 제거된 영상</p>
           </article>
           <article className="youtube-care-status-card youtube-care-status-card--pending">
             <span>대기</span>
-            <strong>{validationSummary.pending}개</strong>
-            <p>아직 검증 중인 추천 링크</p>
+            <strong>{searchEvaluation.summary.pending}개</strong>
+            <p>아직 인공지능 검열이 끝나지 않은 결과</p>
           </article>
         </section>
 
-        <section className="kids-youtube-library youtube-care-library">
-          <div className="kids-youtube-library__head">
-            <div>
-              <h3 className="kids-analysis-title">통과한 추천 영상</h3>
-              <p className="kids-analysis-sub">추천 카드 URL을 먼저 검증해서 통과한 영상만 보여드리고, 선택하면 시청 케어를 시작합니다.</p>
+        <div className="youtube-care-layout">
+          <section className="youtube-care-results">
+            <div className="youtube-care-section-head">
+              <div>
+                <h3>안전한 검색 결과</h3>
+                <p>유튜브 검색 결과를 먼저 검열해서 안전한 영상만 목록에 남깁니다.</p>
+              </div>
+              <span className="youtube-care-pill">{submittedQuery}</span>
             </div>
-            <span className="kids-analysis-chip">{activeChild?.childName ?? '자녀 선택'}</span>
-          </div>
 
-          <div className="kids-youtube-library__filters">
-            <button
-              type="button"
-              className={`youtube-care-filter-tab${activeCategoryId === 'all' ? ' youtube-care-filter-tab--active' : ''}`}
-              onClick={() => setActiveCategoryId('all')}
-            >
-              전체 허용
-            </button>
-            {allowedCategories.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                className={`youtube-care-filter-tab${activeCategoryId === category.id ? ' youtube-care-filter-tab--active' : ''}`}
-                style={{
-                  background: activeCategoryId === category.id ? `${category.accent}22` : 'rgba(255,255,255,0.04)',
-                  color: category.accent,
-                  borderColor: activeCategoryId === category.id ? `${category.accent}88` : 'rgba(255,255,255,0.08)',
-                }}
-                onClick={() => setActiveCategoryId(category.id)}
-              >
-                {category.shortLabel}
-              </button>
-            ))}
-          </div>
-
-          <p className="youtube-care-filter-caption">
-            {activeCategoryId === 'all'
-              ? '설정에서 켜 둔 카테고리만 모아서 보여드리고 있어요.'
-              : `${allowedCategories.find((category) => category.id === activeCategoryId)?.label ?? '선택한 카테고리'}만 보여드리고 있어요.`}
-          </p>
-
-          <div className="kids-youtube-grid">
-            {visibleQuickPicks.map((pick) => {
-              const option = YOUTUBE_CATEGORY_OPTIONS.find((category) => category.id === pick.categoryId)
-              return (
+            <div className="youtube-care-video-list">
+              {searchEvaluation.visible.map(({ item, analysis }) => (
                 <button
-                  key={pick.id}
+                  key={item.videoId}
                   type="button"
-                  className={`kids-youtube-card${selectedYoutubeId === pick.id ? ' kids-youtube-card--active' : ''}`}
-                  onClick={() => handleQuickPickClick(pick.id)}
+                  className={`youtube-care-video-card${selectedVideo?.videoId === item.videoId ? ' youtube-care-video-card--active' : ''}`}
+                  onClick={() => handleVideoSelect(item)}
                 >
-                  <div className="kids-youtube-card__visual" style={{ background: pick.accent }}>
-                    <span className="kids-youtube-card__badge">{pick.badge}</span>
-                    <strong>{pick.title}</strong>
-                    <span>{pick.durationLabel}</span>
+                  <div className="youtube-care-video-card__thumb">
+                    {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.title} /> : <span>썸네일</span>}
                   </div>
-                  <div className="kids-youtube-card__body">
-                    <div>
-                      <p className="kids-youtube-card__title">{pick.subtitle}</p>
-                      <p className="kids-youtube-card__copy">{pick.description}</p>
-                    </div>
-                    <span className="kids-youtube-card__category" style={{ color: option?.accent ?? '#5b3fd6' }}>
-                      {option?.label ?? pick.categoryId}
-                    </span>
+                  <div className="youtube-care-video-card__body">
+                    <strong>{item.title}</strong>
+                    <p>{item.channelTitle ?? '채널 정보가 없어요'}</p>
+                    <span>{analysis.categoryNameKo ?? '분류 중'} · 안전 통과</span>
                   </div>
                 </button>
-              )
-            })}
-            {validationPending && visibleQuickPicks.length === 0 && (
-              <div className="kids-youtube-empty">
-                추천 영상 링크를 검증하고 있어요. NudeNet, Violent, 카테고리 필터를 순서대로 확인 중입니다.
-              </div>
-            )}
-            {!validationPending && visibleQuickPicks.length === 0 && (
-              <div className="kids-youtube-empty">
-                통과한 추천 영상이 없어 보여드릴 카드가 없어요. 유튜브 필터를 바꾸거나 다른 카테고리를 선택해 주세요.
-              </div>
-            )}
-          </div>
-        </section>
-
-        {hiddenQuickPicks.length > 0 && (
-          <section className="youtube-care-hidden">
-            <div className="youtube-care-hidden__head">
-              <h3>숨겨진 추천 영상</h3>
-              <p>NudeNet, Violent, 카테고리 필터에 걸린 영상은 여기서 이유를 보여주고 추천 목록에서는 숨깁니다.</p>
+              ))}
+              {searchPending && searchEvaluation.visible.length === 0 && (
+                <div className="youtube-care-empty">검색 결과를 가져와 인공지능 검열을 진행하고 있어요.</div>
+              )}
+              {!searchPending && searchEvaluation.summary.total === 0 && !searchError && (
+                <div className="youtube-care-empty">검색 결과가 없어요. 다른 검색어로 다시 찾아볼까요?</div>
+              )}
+              {searchError && <div className="youtube-care-empty youtube-care-empty--error">{searchError}</div>}
             </div>
-            <div className="youtube-care-hidden__list">
-              {hiddenQuickPicks.map(({ pick, result }) => {
-                const reasons = [
-                  result?.blockedByCategory ? '카테고리 필터 차단' : null,
-                  result?.hasViolence ? 'Violence 감지' : null,
-                  result?.hasNudity ? 'NudeNet 감지' : null,
-                  !result?.playback.allowed ? '재생 불가' : null,
-                ].filter(Boolean)
 
-                return (
-                  <article key={pick.id} className="youtube-care-hidden__item">
+            {searchEvaluation.hidden.length > 0 && (
+              <section className="youtube-care-hidden">
+                <div className="youtube-care-hidden__head">
+                  <h3>숨겨진 검색 결과</h3>
+                  <p>유해성 탐지, 카테고리 차단, 재생 정책 때문에 제외된 영상입니다.</p>
+                </div>
+                <div className="youtube-care-hidden__list">
+                  {searchEvaluation.hidden.map(({ item, reasons }) => (
+                    <article key={item.videoId} className="youtube-care-hidden__item">
+                      <div>
+                        <strong>{item.title}</strong>
+                        <p>{item.channelTitle ?? '채널 정보가 없어요'}</p>
+                      </div>
+                      <div className="youtube-care-hidden__reasons">
+                        {reasons.map((reason) => (
+                          <span key={reason}>{reason}</span>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+          </section>
+
+          <section className="youtube-care-player" ref={playerSectionRef}>
+            <div className="youtube-care-section-head">
+              <div>
+                <h3>안전 재생 화면</h3>
+                <p>선택한 안전 영상을 재생창에서 보여주고, 아래에서 관련 영상을 다시 검열합니다.</p>
+              </div>
+              <span className="youtube-care-pill">{hasSelectedVideo ? '재생 중' : '선택 대기'}</span>
+            </div>
+
+            <div className="youtube-care-player__frame">
+              {playerEmbedUrl ? (
+                <iframe
+                  title={selectedVideo?.title ?? '유튜브 재생기'}
+                  src={playerEmbedUrl}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="youtube-care-player__placeholder">
+                  <strong>{selectedVideo ? '영상을 준비하고 있어요.' : '재생할 영상을 선택해 주세요.'}</strong>
+                  <p>
+                    {selectedVideo && selectedBlockedReasons.length > 0
+                      ? selectedBlockedReasons.join(' · ')
+                      : '안전 통과된 검색 결과나 관련 추천을 누르면 이 영역에서 바로 재생됩니다.'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="kids-analysis-shell youtube-care-analysis">
+              <div className="kids-analysis-card">
+                <div className="kids-analysis-head">
+                  <div>
+                    <h3 className="kids-analysis-title">현재 영상 검열 결과</h3>
+                    <p className="kids-analysis-sub">
+                      {selectedVideo
+                        ? `${selectedVideo.title} 영상에 대한 메타데이터 필터와 인공지능 분석 결과입니다.`
+                        : '안전 결과를 먼저 누르면 이 영역에 현재 영상 결과가 표시됩니다.'}
+                    </p>
+                  </div>
+                  <span className="kids-analysis-chip">
+                    {analysisPending ? '저장 및 시청 케어 연결 중' : hasSelectedVideo ? '재생 중' : '대기 중'}
+                  </span>
+                </div>
+
+                {selectedModeration ? (
+                  <div className={`kids-analysis-result${canPlaySelectedVideo ? ' kids-analysis-result--ok' : ' kids-analysis-result--blocked'}`}>
                     <div>
-                      <strong>{pick.title}</strong>
-                      <p>{pick.subtitle}</p>
+                      <strong>{canPlaySelectedVideo ? '현재 영상은 안전하게 재생할 수 있어요.' : '현재 영상은 재생할 수 없어요.'}</strong>
+                      <p>{selectedModeration.playback.message}</p>
+                      {selectedModeration.categoryNameKo && (
+                        <p className="kids-analysis-risk">분류된 카테고리: {selectedModeration.categoryNameKo}</p>
+                      )}
+                      {selectedModeration.harmfulReasons.length > 0 && (
+                        <p className="kids-analysis-risk">감지 사유: {selectedModeration.harmfulReasons.join(' · ')}</p>
+                      )}
+                      {activeMonitor && (
+                        <p className="kids-analysis-risk">
+                          시청 케어 상태: {activeMonitor.active ? '실행 중' : activeMonitor.status} · {activeMonitor.message}
+                        </p>
+                      )}
                     </div>
-                    <div className="youtube-care-hidden__reasons">
-                      {reasons.map((reason) => (
-                        <span key={reason}>{reason}</span>
+                    <div className="kids-analysis-actions">
+                      {activeMonitor?.active && (
+                        <button
+                          type="button"
+                          className="kids-analysis-stop"
+                          onClick={() => void onStopAddictionMonitor()}
+                          disabled={monitorPending}
+                        >
+                          {monitorPending ? '카메라 종료 중' : '카메라 종료'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="kids-analysis-placeholder">
+                    아직 선택한 영상이 없어요. 안전 검색 결과에서 영상을 고르면 검열 결과와 재생 화면이 같이 열립니다.
+                  </div>
+                )}
+              </div>
+
+              <div className="kids-analysis-aside">
+                <div className="kids-aside-card">
+                  <h4>실시간 시청 케어</h4>
+                  <p>상태: {monitorLive?.active ? '실행 중' : monitorLive?.status ?? '대기'}</p>
+                  <p>눈 깜박임: {monitorLive?.blinkBpm != null ? `${Math.round(monitorLive.blinkBpm)}회/분` : '아직 없음'}</p>
+                  <p>자세: {monitorLive?.poseStatus ?? '아직 없음'}</p>
+                  <p>거리: {monitorLive?.screenDistanceCm != null ? `${Math.round(monitorLive.screenDistanceCm)}cm` : '아직 없음'}</p>
+                  <p>정면 응시: {monitorLive?.frontFacing == null ? '아직 없음' : monitorLive.frontFacing ? '정면' : '다른 방향'}</p>
+                  <p>집중도: {monitorLive?.focusScore != null ? `${Math.round(monitorLive.focusScore)}점` : '아직 없음'}</p>
+                </div>
+
+                <div className="kids-aside-card">
+                  <h4>최근 확인 내역</h4>
+                  {analysisHistory.slice(0, 3).map((item) => (
+                    <p key={`${item.analysisId}-${item.inputUrl}`}>
+                      {item.title ?? item.inputUrl} · {item.playback.allowed ? '시청 가능' : '주의 필요'}
+                    </p>
+                  ))}
+                  {analysisHistory.length === 0 && <p>아직 확인한 영상이 없어요.</p>}
+                </div>
+
+                <div className="kids-aside-card">
+                  <h4>최근 시청 및 알림</h4>
+                  {viewingHistory.slice(0, 2).map((item) => (
+                    <p key={item.viewingId}>{summarizeHistoryItem(item)}</p>
+                  ))}
+                  {viewingHistory.length === 0 && <p>아직 시청 기록이 없어요.</p>}
+                  <p>최근 알림: <span style={{ color: getRiskTone(recentAlerts[0]?.riskLevel) }}>{recentAlerts[0]?.riskLevel ?? '안정'}</span></p>
+                  <p>{summarizeAlert(recentAlerts[0])}</p>
+                </div>
+              </div>
+            </div>
+
+            {selectedVideo && (
+              <section className="youtube-care-related">
+                <div className="youtube-care-section-head">
+                  <div>
+                    <h3>관련 영상 추천</h3>
+                    <p>현재 영상과 연결된 추천 결과도 다시 검열해서 안전한 추천만 남깁니다.</p>
+                  </div>
+                  <span className="youtube-care-pill">{relatedEvaluation.summary.passed}개 안전 통과</span>
+                </div>
+
+                <div className="youtube-care-video-list youtube-care-video-list--related">
+                  {relatedEvaluation.visible.map(({ item, analysis }) => (
+                    <button
+                      key={item.videoId}
+                      type="button"
+                      className={`youtube-care-video-card${selectedVideo.videoId === item.videoId ? ' youtube-care-video-card--active' : ''}`}
+                      onClick={() => handleVideoSelect(item)}
+                    >
+                      <div className="youtube-care-video-card__thumb">
+                        {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={item.title} /> : <span>썸네일</span>}
+                      </div>
+                      <div className="youtube-care-video-card__body">
+                        <strong>{item.title}</strong>
+                        <p>{item.channelTitle ?? '채널 정보가 없어요'}</p>
+                        <span>{analysis.categoryNameKo ?? '분류 중'} · 안전 통과</span>
+                      </div>
+                    </button>
+                  ))}
+                  {relatedPending && relatedEvaluation.visible.length === 0 && (
+                    <div className="youtube-care-empty">관련 영상을 불러와 다시 검열하고 있어요.</div>
+                  )}
+                  {!relatedPending && relatedEvaluation.summary.total === 0 && !relatedError && (
+                    <div className="youtube-care-empty">현재 영상과 연결된 안전 추천 영상이 아직 없어요.</div>
+                  )}
+                  {relatedError && <div className="youtube-care-empty youtube-care-empty--error">{relatedError}</div>}
+                </div>
+
+                {relatedEvaluation.hidden.length > 0 && (
+                  <section className="youtube-care-hidden">
+                    <div className="youtube-care-hidden__head">
+                      <h3>숨겨진 관련 영상</h3>
+                      <p>현재 영상 아래 추천되었지만 검열에서 걸러진 영상입니다.</p>
+                    </div>
+                    <div className="youtube-care-hidden__list">
+                      {relatedEvaluation.hidden.map(({ item, reasons }) => (
+                        <article key={item.videoId} className="youtube-care-hidden__item">
+                          <div>
+                            <strong>{item.title}</strong>
+                            <p>{item.channelTitle ?? '채널 정보가 없어요'}</p>
+                          </div>
+                          <div className="youtube-care-hidden__reasons">
+                            {reasons.map((reason) => (
+                              <span key={reason}>{reason}</span>
+                            ))}
+                          </div>
+                        </article>
                       ))}
                     </div>
-                  </article>
-                )
-              })}
-            </div>
-          </section>
-        )}
-
-        <section className="kids-analysis-shell youtube-care-analysis">
-          <div className="kids-analysis-card">
-            <div className="kids-analysis-head">
-              <div>
-                <h3 className="kids-analysis-title">유튜브 확인 결과</h3>
-                <p className="kids-analysis-sub">
-                  {selectedYoutubePick
-                    ? `${selectedYoutubePick.title} 카드를 기준으로 확인해요.`
-                    : '통과한 영상을 먼저 골라 주세요.'}
-                </p>
-              </div>
-              <span className="kids-analysis-chip">
-                {analysisPending || validationPending ? '확인 중' : serverLoading ? '동기화 중' : healthStatus}
-              </span>
-            </div>
-
-            <div className="kids-analysis-meta">
-              <span>최근 확인 {analysisHistory.length}건</span>
-              <span>시청 케어 {runtimeSettings?.addictionMonitorEnabled ? '켜짐' : '꺼짐'}</span>
-              <span>개인정보 동의 {runtimeSettings?.privacyConsent ? '켜짐' : '꺼짐'}</span>
-            </div>
-
-            {latestAnalysis ? (
-              <div className={`kids-analysis-result${canOpenAnalyzedVideo ? ' kids-analysis-result--ok' : ' kids-analysis-result--blocked'}`}>
-                <div>
-                  <strong>
-                    {blockedByUserCategory
-                      ? '현재 설정에서 허용되지 않은 카테고리예요.'
-                      : latestAnalysis.playback.allowed
-                        ? '지금은 시청해도 괜찮아요.'
-                        : '다른 영상을 선택해 주세요.'}
-                  </strong>
-                  <p>
-                    {blockedByUserCategory
-                      ? `${latestAnalysis.categoryNameKo ?? '해당 카테고리'}는 현재 필터에서 꺼져 있어요.`
-                      : latestAnalysis.playback.message}
-                  </p>
-                  {guidanceLabel && <p className="kids-analysis-risk">시청 안내: {guidanceLabel}</p>}
-                  {latestAnalysis.categoryNameKo && (
-                    <p className="kids-analysis-risk">분류된 카테고리: {latestAnalysis.categoryNameKo}</p>
-                  )}
-                  {activeMonitor && (
-                    <p className="kids-analysis-risk">
-                      카메라 상태: {activeMonitor.active ? '실행 중' : activeMonitor.status} · {activeMonitor.message}
-                    </p>
-                  )}
-                </div>
-                <div className="kids-analysis-actions">
-                  {canOpenAnalyzedVideo && (
-                    <button
-                      type="button"
-                      className="kids-analysis-open"
-                      onClick={() => window.open(submittedUrl, '_blank', 'noopener,noreferrer')}
-                    >
-                      영상 열기
-                    </button>
-                  )}
-                  {activeMonitor?.active && (
-                    <button
-                      type="button"
-                      className="kids-analysis-stop"
-                      onClick={() => void onStopAddictionMonitor()}
-                      disabled={monitorPending}
-                    >
-                      {monitorPending ? '카메라 종료 중' : '카메라 종료'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="kids-analysis-placeholder">
-                통과한 추천 영상을 찾는 중이에요. 검증이 끝나면 바로 볼 수 있는 영상만 남겨둘게요.
-              </div>
+                  </section>
+                )}
+              </section>
             )}
-          </div>
-
-          <div className="kids-analysis-aside">
-            <div className="kids-aside-card">
-              <h4>실시간 시청 케어</h4>
-              <p>상태: {monitorLive?.active ? '실행 중' : monitorLive?.status ?? '대기'}</p>
-              <p>눈 깜박임: {monitorLive?.blinkBpm != null ? `${Math.round(monitorLive.blinkBpm)}회/분` : '아직 없음'}</p>
-              <p>자세: {monitorLive?.poseStatus ?? '아직 없음'}</p>
-              <p>거리: {monitorLive?.screenDistanceCm != null ? `${Math.round(monitorLive.screenDistanceCm)}cm` : '아직 없음'}</p>
-              <p>정면 응시: {monitorLive?.frontFacing == null ? '아직 없음' : monitorLive.frontFacing ? '정면' : '다른 방향'}</p>
-              <p>집중도: {monitorLive?.focusScore != null ? `${Math.round(monitorLive.focusScore)}점` : '아직 없음'}</p>
-              {monitorLive?.errorMessage && <p>{monitorLive.errorMessage}</p>}
-              {monitorLive?.childMessages?.slice(0, 1).map((message) => (
-                <p key={message}>{message}</p>
-              ))}
-            </div>
-
-            <div className="kids-aside-card">
-              <h4>최근 확인 내역</h4>
-              {analysisHistory.slice(0, 3).map((item) => (
-                <p key={`${item.analysisId}-${item.inputUrl}`}>
-                  {item.title ?? item.inputUrl} · {item.playback.allowed ? '시청 가능' : '주의 필요'}
-                </p>
-              ))}
-              {analysisHistory.length === 0 && <p>아직 확인한 영상이 없어요.</p>}
-            </div>
-
-            <div className="kids-aside-card">
-              <h4>최근 시청 및 알림</h4>
-              {viewingHistory.slice(0, 2).map((item) => (
-                <p key={item.viewingId}>{summarizeHistoryItem(item)}</p>
-              ))}
-              {viewingHistory.length === 0 && <p>아직 시청 기록이 없어요.</p>}
-              <p>최근 알림: <span style={{ color: getRiskTone(recentAlerts[0]?.riskLevel) }}>{recentAlerts[0]?.riskLevel ?? '안정'}</span></p>
-              <p>{summarizeAlert(recentAlerts[0])}</p>
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </div>
   )
+}
+
+function buildBlockedReasons(
+  analysis: AnalysisResponse,
+  youtubeCategorySettings: YoutubeCategorySettings,
+  activeChild: ParentChildResponse | null,
+) {
+  const reasons: string[] = []
+
+  if (activeChild?.watchPolicy.autoBlockEnabled) {
+    const reachedDailyLimit = activeChild.todayWatchMinutes >= activeChild.watchPolicy.dailyLimitMinutes
+    const bedtimeLocked = activeChild.watchPolicy.bedtimeLockEnabled && !activeChild.viewingAllowedNow
+
+    if (!activeChild.viewingAllowedNow) {
+      reasons.push(bedtimeLocked ? '부모 설정 취침 잠금' : '부모 설정 시청 시간 제한')
+    } else if (reachedDailyLimit) {
+      reasons.push('부모 설정 일일 시청 제한')
+    }
+  }
+
+  if (analysis.categoryNameKo && !isYoutubeCategoryAllowed(analysis.categoryNameKo, youtubeCategorySettings)) {
+    reasons.push('카테고리 필터 차단')
+  }
+  if (analysis.blockedByCategory) {
+    reasons.push('기본 카테고리 차단')
+  }
+  if (analysis.hasViolence) {
+    reasons.push('폭력 감지')
+  }
+  if (analysis.hasNudity) {
+    reasons.push('노출 감지')
+  }
+  if (!analysis.playback.allowed) {
+    reasons.push('재생 불가')
+  }
+
+  return reasons
 }

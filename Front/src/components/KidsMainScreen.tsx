@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ScreenId } from '../data/kidsProfileFlow'
 import { KIDS_CATEGORIES } from '../data/kidsProfileFlow'
 import { getCombinedRecommendations, getContentsByAge, getThemeByAge, type ChildProfile } from '../data/profiles'
 import {
+  DEFAULT_YOUTUBE_CATEGORY_SETTINGS,
   getEnabledYoutubeCategories,
   isYoutubeCategoryAllowed,
-  YOUTUBE_CATEGORY_OPTIONS,
   YOUTUBE_QUICK_PICKS,
+  type YoutubeCategoryId,
   type YoutubeCategorySettings,
 } from '../data/youtubeExperience'
 import type {
@@ -19,7 +20,9 @@ import type {
   ParentViewingHistoryResponse,
   RuntimeSettingsResponse,
   SystemHealthResponse,
+  YoutubeVideoCatalogItem,
 } from '../lib/api'
+import { getRelatedYoutubeVideos, searchYoutubeVideos } from '../lib/api'
 import { formatMinutes, getRiskTone, summarizeAlert, summarizeHistoryItem } from '../lib/integration'
 import { KidsContentCard } from './KidsContentCard'
 import { KidsLayout } from './KidsLayout'
@@ -34,6 +37,55 @@ const contentV = {
   enter: (dir: number) => ({ x: dir * 48, opacity: 0 }),
   center: { x: 0, opacity: 1, transition: { type: 'spring' as const, damping: 22, stiffness: 260 } },
   exit: (dir: number) => ({ x: dir * -48, opacity: 0, transition: { duration: 0.18 } }),
+}
+
+const THINQ_MOBILE_UI_URL = import.meta.env.VITE_THINQ_UI_URL ?? 'http://localhost:4174/'
+
+function buildFallbackCatalogItems() {
+  return YOUTUBE_QUICK_PICKS.map((pick) => ({
+    videoId: pick.videoId,
+    title: pick.title,
+    channelTitle: '추천 영상',
+    description: pick.description,
+    thumbnailUrl: buildYoutubeThumbnailUrl(pick.videoId),
+    publishedAt: null,
+  }))
+}
+
+const YOUTUBE_PAGE_LABELS: Record<YoutubeCategoryId, string> = {
+  film_animation: '애니',
+  autos_vehicles: '탈것',
+  music: '음악',
+  pets_animals: '동물',
+  sports: '스포츠',
+  travel_events: '여행',
+  gaming: '게임',
+  people_blogs: '일상',
+  comedy: '코미디',
+  entertainment: '예능',
+  news_politics: '뉴스',
+  howto_style: '생활',
+  education: '학습',
+  science_technology: '과학',
+  nonprofits_activism: '사회',
+}
+
+const YOUTUBE_CATEGORY_QUERY_SEEDS: Record<YoutubeCategoryId, string> = {
+  film_animation: '아이 애니메이션 동화',
+  autos_vehicles: '아이 자동차 탈것',
+  music: '아이 음악 동요',
+  pets_animals: '아이 동물 자연',
+  sports: '아이 스포츠 체육',
+  travel_events: '아이 여행 체험',
+  gaming: '아이 게임 만들기',
+  people_blogs: '아이 일상 브이로그',
+  comedy: '아이 코미디 웃긴 영상',
+  entertainment: '아이 예능 챌린지',
+  news_politics: '아이 뉴스 시사',
+  howto_style: '아이 만들기 생활',
+  education: '아이 학습 교육',
+  science_technology: '아이 과학 탐구',
+  nonprofits_activism: '아이 사회 캠페인',
 }
 
 type Props = {
@@ -52,7 +104,7 @@ type Props = {
   runtimeSettings: RuntimeSettingsResponse | null
   systemHealth: SystemHealthResponse | null
   serverLoading: boolean
-  onAnalyzeYoutube: (videoUrl: string) => Promise<void> | void
+  onAnalyzeYoutube: (videoId: string) => Promise<void> | void
   analysisPending: boolean
   youtubeCategorySettings: YoutubeCategorySettings
   activeMonitor: MonitorControlResponse | null
@@ -88,7 +140,21 @@ export function KidsMainScreen({
   const [panelOpen, setPanelOpen] = useState(false)
   const [slideDir, setSlideDir] = useState(1)
   const [selectedYoutubeId, setSelectedYoutubeId] = useState(YOUTUBE_QUICK_PICKS[0]?.id ?? '')
-  const [submittedUrl, setSubmittedUrl] = useState(YOUTUBE_QUICK_PICKS[0]?.url ?? '')
+  const [submittedVideoId, setSubmittedVideoId] = useState(YOUTUBE_QUICK_PICKS[0]?.videoId ?? '')
+  const [playbackVideoId, setPlaybackVideoId] = useState('')
+  const [selectedPlaybackItem, setSelectedPlaybackItem] = useState<YoutubeVideoCatalogItem | null>(null)
+  const [dismissedVideoIds, setDismissedVideoIds] = useState<string[]>([])
+  const [activeYoutubeCategoryId, setActiveYoutubeCategoryId] = useState<YoutubeCategoryId | 'all'>('all')
+  const [youtubeSearchQuery, setYoutubeSearchQuery] = useState('공룡')
+  const [youtubeExamples, setYoutubeExamples] = useState<YoutubeVideoCatalogItem[]>(buildFallbackCatalogItems)
+  const [youtubeSearchResults, setYoutubeSearchResults] = useState<YoutubeVideoCatalogItem[]>([])
+  const [youtubeRelatedResults, setYoutubeRelatedResults] = useState<YoutubeVideoCatalogItem[]>([])
+  const [youtubeSearchPending, setYoutubeSearchPending] = useState(false)
+  const [youtubeSearchError, setYoutubeSearchError] = useState<string | null>(null)
+  const [youtubeRelatedPending, setYoutubeRelatedPending] = useState(false)
+  const [youtubeRelatedError, setYoutubeRelatedError] = useState<string | null>(null)
+  const [lastManualSearchQuery, setLastManualSearchQuery] = useState('')
+  const playerSectionRef = useRef<HTMLDivElement | null>(null)
 
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
   const theme = getThemeByAge(activeProfile.age)
@@ -106,9 +172,19 @@ export function KidsMainScreen({
     ? `linear-gradient(90deg, ${profiles[0].color} 0%, ${profiles[1].color} 100%)`
     : theme.accent
 
-  const allowedCategories = useMemo(
-    () => getEnabledYoutubeCategories(youtubeCategorySettings),
-    [youtubeCategorySettings],
+  const allowedCategories = useMemo(() => {
+    const enabled = getEnabledYoutubeCategories(youtubeCategorySettings)
+    if (enabled.length > 0) {
+      return enabled
+    }
+
+    return getEnabledYoutubeCategories(DEFAULT_YOUTUBE_CATEGORY_SETTINGS)
+  }, [youtubeCategorySettings])
+  const selectedYoutubeCategory = useMemo(
+    () => activeYoutubeCategoryId === 'all'
+      ? null
+      : allowedCategories.find((category) => category.id === activeYoutubeCategoryId) ?? null,
+    [activeYoutubeCategoryId, allowedCategories],
   )
 
   const quickPicks = useMemo(() => {
@@ -123,24 +199,206 @@ export function KidsMainScreen({
     }
 
     const preferredCategoryIds = pickMapByCategory[activeCategory] ?? pickMapByCategory.home
-    const filtered = YOUTUBE_QUICK_PICKS.filter((pick) => youtubeCategorySettings[pick.categoryId])
+    const allowedCategoryIds = new Set(allowedCategories.map((category) => category.id))
+    const filtered = YOUTUBE_QUICK_PICKS.filter((pick) => allowedCategoryIds.has(pick.categoryId))
 
     return filtered
       .filter((pick) => preferredCategoryIds.includes(pick.categoryId))
       .concat(filtered.filter((pick) => !preferredCategoryIds.includes(pick.categoryId)))
       .slice(0, 6)
-  }, [activeCategory, youtubeCategorySettings])
+  }, [activeCategory, allowedCategories])
+
+  const recommendationPages = useMemo(() => allowedCategories.map((category) => ({
+    id: category.id,
+    label: YOUTUBE_PAGE_LABELS[category.id] ?? category.shortLabel,
+    querySeed: YOUTUBE_CATEGORY_QUERY_SEEDS[category.id] ?? category.shortLabel,
+    accent: category.accent,
+  })), [allowedCategories])
+
+  const localFallbackExamples = useMemo(
+    () => {
+      const source = activeYoutubeCategoryId !== 'all'
+        ? YOUTUBE_QUICK_PICKS.filter((pick) => pick.categoryId === activeYoutubeCategoryId)
+        : quickPicks
+      const fallbackSource = source.length > 0 ? source : quickPicks.length > 0 ? quickPicks : YOUTUBE_QUICK_PICKS
+
+      return fallbackSource.map((pick) => ({
+      videoId: pick.videoId,
+      title: pick.title,
+      channelTitle: '추천 영상',
+      description: pick.description,
+      thumbnailUrl: buildYoutubeThumbnailUrl(pick.videoId),
+      publishedAt: null,
+      }))
+    },
+    [activeYoutubeCategoryId, quickPicks],
+  )
+
+  const suggestionQueryByCategory = useMemo<Record<string, string>>(() => ({
+    home: '공룡 교육',
+    percent: '어린이 브이로그',
+    english: '영어 동요',
+    nuree: '동물 자연 다큐',
+    books: '어린이 동화 읽기',
+    songs: '어린이 동요',
+    char: '어린이 애니메이션',
+  }), [])
+
+  const activeSuggestionQuery = suggestionQueryByCategory[activeCategory] ?? suggestionQueryByCategory.home
+  const recommendationPageQuery = recommendationPages.find((page) => page.id === activeYoutubeCategoryId)?.querySeed ?? ''
+  const youtubeCategoryQuery = recommendationPageQuery || selectedYoutubeCategory?.aliases?.[0] || selectedYoutubeCategory?.shortLabel || ''
+  const effectiveSuggestionQuery = [activeSuggestionQuery, youtubeCategoryQuery].filter(Boolean).join(' ')
+  const displayedRecommendationItems = useMemo(
+    () => (youtubeSearchResults.length > 0 ? youtubeSearchResults : youtubeExamples),
+    [youtubeExamples, youtubeSearchResults],
+  )
+  const recommendationHeadline = youtubeSearchResults.length > 0 && lastManualSearchQuery
+    ? `검색 결과 추천 · ${lastManualSearchQuery}`
+    : effectiveSuggestionQuery
+  const dbWatchedVideoIds = useMemo(() => new Set([
+    ...viewingHistory.map((item) => item.videoId),
+    ...analysisHistory.map((item) => item.videoId ?? ''),
+  ].filter(Boolean)), [analysisHistory, viewingHistory])
+  const hiddenRecommendationVideoIds = useMemo(() => new Set([
+    playbackVideoId,
+    ...dismissedVideoIds,
+    ...dbWatchedVideoIds,
+  ].filter(Boolean)), [dbWatchedVideoIds, dismissedVideoIds, playbackVideoId])
+  const mergedRecommendationItems = useMemo(() => {
+    const mergedItems = [...youtubeSearchResults, ...displayedRecommendationItems]
+    const dedupedItems = new Map<string, YoutubeVideoCatalogItem>()
+
+    for (const item of mergedItems) {
+      if (!dedupedItems.has(item.videoId)) {
+        dedupedItems.set(item.videoId, item)
+      }
+    }
+
+    return Array.from(dedupedItems.values())
+  }, [displayedRecommendationItems, youtubeSearchResults])
+  const derivedPlaybackItem = useMemo(() => {
+    const sources = [
+      ...youtubeExamples,
+      ...youtubeSearchResults,
+      ...youtubeRelatedResults,
+      ...localFallbackExamples,
+    ]
+
+    return sources.find((item) => item.videoId === playbackVideoId) ?? null
+  }, [localFallbackExamples, playbackVideoId, youtubeExamples, youtubeRelatedResults, youtubeSearchResults])
+  const playbackItem = selectedPlaybackItem ?? derivedPlaybackItem
+  const watchedSearchResults = useMemo(() => {
+    const query = youtubeSearchQuery.trim().toLowerCase()
+    if (!query) {
+      return []
+    }
+
+    const byVideoId = new Map<string, YoutubeVideoCatalogItem>()
+    for (const item of analysisHistory) {
+      if (!item.videoId) {
+        continue
+      }
+
+      const haystack = [
+        item.title ?? '',
+        item.categoryNameKo ?? '',
+        item.inputUrl ?? '',
+      ].join(' ').toLowerCase()
+
+      if (!haystack.includes(query)) {
+        continue
+      }
+
+      if (!byVideoId.has(item.videoId)) {
+        byVideoId.set(item.videoId, {
+          videoId: item.videoId,
+          title: item.title ?? `유튜브 영상 ${item.videoId}`,
+          channelTitle: '예전에 본 영상',
+          description: item.inputUrl,
+          thumbnailUrl: buildYoutubeThumbnailUrl(item.videoId),
+          publishedAt: item.createdAt ?? null,
+        })
+      }
+    }
+
+    return Array.from(byVideoId.values()).filter((item) => item.videoId !== playbackVideoId)
+  }, [analysisHistory, playbackVideoId, youtubeSearchQuery])
 
   const selectedYoutubePick = quickPicks.find((pick) => pick.id === selectedYoutubeId) ?? quickPicks[0] ?? null
   const blockedByUserCategory = latestAnalysis?.categoryNameKo
     ? !isYoutubeCategoryAllowed(latestAnalysis.categoryNameKo, youtubeCategorySettings)
     : false
+  const recentReplayItems = useMemo(() => {
+    const items = new Map<string, {
+      key: string
+      videoId: string
+      title: string
+      subtitle: string
+      badge: string
+      catalogItem: YoutubeVideoCatalogItem
+    }>()
 
-  const canOpenAnalyzedVideo = Boolean(
-    latestAnalysis?.playback.allowed
-    && !blockedByUserCategory
-    && submittedUrl.length > 0,
-  )
+    const registerItem = (
+      videoId: string | null | undefined,
+      title: string | null | undefined,
+      subtitle: string,
+      badge: string,
+      catalogItem?: YoutubeVideoCatalogItem | null,
+    ) => {
+      if (!videoId || items.has(videoId)) {
+        return
+      }
+
+      items.set(videoId, {
+        key: `${badge}-${videoId}`,
+        videoId,
+        title: title?.trim() || `유튜브 영상 ${videoId}`,
+        subtitle,
+        badge,
+        catalogItem: catalogItem ?? {
+          videoId,
+          title: title?.trim() || `유튜브 영상 ${videoId}`,
+          channelTitle: badge,
+          description: subtitle,
+          thumbnailUrl: buildYoutubeThumbnailUrl(videoId),
+          publishedAt: null,
+        },
+      })
+    }
+
+    registerItem(
+      playbackVideoId,
+      playbackItem?.title ?? latestAnalysis?.title,
+      monitorLive?.active ? `시청 케어 ${monitorLive.status ?? '실행 중'}` : '지금 보고 있는 영상',
+      '실시간 시청 케어',
+      playbackItem,
+    )
+
+    analysisHistory.forEach((item) => {
+      registerItem(
+        item.videoId,
+        item.title,
+        item.playback.allowed ? '사전 확인을 통과한 영상' : '주의가 필요했던 영상',
+        '최근 확인 내역',
+      )
+    })
+
+    viewingHistory.forEach((item) => {
+      registerItem(
+        item.videoId,
+        summarizeHistoryItem(item),
+        item.watchTime || '최근 시청 기록',
+        '최근 시청',
+      )
+    })
+
+    return Array.from(items.values()).slice(0, 8)
+  }, [analysisHistory, latestAnalysis?.title, monitorLive?.active, monitorLive?.status, playbackItem, playbackVideoId, viewingHistory])
+
+  const canOpenAnalyzedVideo = Boolean(playbackVideoId.length > 0)
+  const playerEmbedUrl = canOpenAnalyzedVideo
+    ? `https://www.youtube.com/embed/${playbackVideoId}?autoplay=1&rel=0&modestbranding=1`
+    : null
 
   const guidanceLabel = latestAnalysis
     ? latestAnalysis.playback.addictionRiskLevel === 'HIGH'
@@ -184,9 +442,25 @@ export function KidsMainScreen({
   ]
 
   useEffect(() => {
+    if (recommendationPages.length === 0) {
+      setActiveYoutubeCategoryId('all')
+      return
+    }
+
+    if (activeYoutubeCategoryId === 'all') {
+      setActiveYoutubeCategoryId(recommendationPages[0].id)
+      return
+    }
+
+    if (!recommendationPages.some((page) => page.id === activeYoutubeCategoryId)) {
+      setActiveYoutubeCategoryId(recommendationPages[0].id)
+    }
+  }, [activeYoutubeCategoryId, recommendationPages])
+
+  useEffect(() => {
     if (quickPicks.length === 0) {
       setSelectedYoutubeId('')
-      setSubmittedUrl('')
+      setSubmittedVideoId('')
       return
     }
 
@@ -199,10 +473,125 @@ export function KidsMainScreen({
       setSelectedYoutubeId(current.id)
     }
 
-    if (submittedUrl !== current.url) {
-      setSubmittedUrl(current.url)
+    if (submittedVideoId !== current.videoId) {
+      setSubmittedVideoId(current.videoId)
     }
-  }, [quickPicks, selectedYoutubeId, submittedUrl])
+  }, [quickPicks, selectedYoutubeId, submittedVideoId])
+
+  useEffect(() => {
+    setYoutubeSearchQuery(effectiveSuggestionQuery)
+  }, [effectiveSuggestionQuery])
+
+  useEffect(() => {
+    if (!playbackVideoId) {
+      return
+    }
+
+    playerSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [playbackVideoId])
+
+  useEffect(() => {
+    let cancelled = false
+    setYoutubeSearchPending(true)
+    setYoutubeSearchError(null)
+
+    void searchYoutubeVideos(effectiveSuggestionQuery, 10)
+      .then((response) => {
+        if (cancelled) {
+          return
+        }
+        setYoutubeExamples(response.items.length > 0 ? response.items : localFallbackExamples)
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+        setYoutubeExamples(localFallbackExamples)
+        setYoutubeSearchError(error instanceof Error ? error.message : '추천 영상을 불러오지 못했어요.')
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setYoutubeSearchPending(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [effectiveSuggestionQuery, localFallbackExamples])
+
+  function handleYoutubeSearchSubmit() {
+    const trimmed = youtubeSearchQuery.trim()
+    if (!trimmed) {
+      setYoutubeSearchResults([])
+      setLastManualSearchQuery('')
+      return
+    }
+
+    setYoutubeSearchPending(true)
+    setYoutubeSearchError(null)
+    setLastManualSearchQuery(trimmed)
+
+    void searchYoutubeVideos(trimmed, 10)
+      .then((response) => {
+        setYoutubeSearchResults(response.items)
+      })
+      .catch((error) => {
+        setYoutubeSearchResults([])
+        setYoutubeSearchError(error instanceof Error ? error.message : '검색 결과를 불러오지 못했어요.')
+      })
+      .finally(() => {
+        setYoutubeSearchPending(false)
+      })
+  }
+
+  function handleYoutubeVideoCardClick(item: YoutubeVideoCatalogItem) {
+    setSubmittedVideoId(item.videoId)
+    setPlaybackVideoId(item.videoId)
+    setSelectedPlaybackItem(item)
+    setDismissedVideoIds((previous) => (
+      previous.includes(item.videoId)
+        ? previous
+        : [...previous, item.videoId]
+    ))
+    setSelectedYoutubeId('')
+    void onAnalyzeYoutube(item.videoId)
+  }
+
+  useEffect(() => {
+    if (!submittedVideoId) {
+      setYoutubeRelatedResults([])
+      return
+    }
+
+    let cancelled = false
+    setYoutubeRelatedPending(true)
+    setYoutubeRelatedError(null)
+
+    void getRelatedYoutubeVideos(submittedVideoId, 10)
+      .then((response) => {
+        if (cancelled) {
+          return
+        }
+        setYoutubeRelatedResults(response.items.filter((item) => item.videoId !== submittedVideoId))
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+        setYoutubeRelatedResults([])
+        setYoutubeRelatedError(error instanceof Error ? error.message : '관련 영상을 불러오지 못했어요.')
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setYoutubeRelatedPending(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [submittedVideoId])
 
   function switchTab(id: string) {
     const currentIndex = profiles.findIndex((profile) => profile.id === activeProfileId)
@@ -217,17 +606,6 @@ export function KidsMainScreen({
   function toggleShared() {
     setSlideDir(sharedMode ? -1 : 1)
     onToggleSharedMode()
-  }
-
-  function handleQuickPickClick(videoId: string) {
-    const nextPick = quickPicks.find((pick) => pick.id === videoId)
-    if (!nextPick) {
-      return
-    }
-
-    setSelectedYoutubeId(nextPick.id)
-    setSubmittedUrl(nextPick.url)
-    void onAnalyzeYoutube(nextPick.url)
   }
 
   const sidebar = (
@@ -316,7 +694,12 @@ export function KidsMainScreen({
         </div>
       </div>
 
-      <button type="button" className="kids-char-btn bounce-on-click" style={{ background: accent }}>
+      <button
+        type="button"
+        className="kids-char-btn bounce-on-click"
+        style={{ background: accent }}
+        onClick={() => window.open(THINQ_MOBILE_UI_URL, '_blank', 'noopener,noreferrer')}
+      >
         <span className="kids-char-name">키즈 리포트 보기</span>
         <div className="kids-char-sub">
           {latestAnalysis?.title ? `최근 확인: ${latestAnalysis.title}` : '최근 확인 결과와 추천 흐름을 한 번에 이어서 볼 수 있어요.'}
@@ -406,59 +789,7 @@ export function KidsMainScreen({
               ))}
             </div>
 
-            <section className="kids-youtube-library">
-              <div className="kids-youtube-library__head">
-                <div>
-                  <h3 className="kids-analysis-title">안심 유튜브 고르기</h3>
-                  <p className="kids-analysis-sub">링크를 붙여 넣지 않아도 카드만 누르면 영상 URL을 가져와 먼저 확인해 줍니다.</p>
-                </div>
-                <span className="kids-analysis-chip">{activeChild?.childName ?? activeProfile.name}</span>
-              </div>
-
-              <div className="kids-youtube-library__filters">
-                {allowedCategories.map((category) => (
-                  <span key={category.id} className="kids-youtube-filter" style={{ background: `${category.accent}22`, color: category.accent }}>
-                    {category.shortLabel}
-                  </span>
-                ))}
-              </div>
-
-              <div className="kids-youtube-grid">
-                {quickPicks.map((pick) => {
-                  const option = YOUTUBE_CATEGORY_OPTIONS.find((category) => category.id === pick.categoryId)
-                  return (
-                    <button
-                      key={pick.id}
-                      type="button"
-                      className={`kids-youtube-card${selectedYoutubeId === pick.id ? ' kids-youtube-card--active' : ''}`}
-                      onClick={() => handleQuickPickClick(pick.id)}
-                    >
-                      <div className="kids-youtube-card__visual" style={{ background: pick.accent }}>
-                        <span className="kids-youtube-card__badge">{pick.badge}</span>
-                        <strong>{pick.title}</strong>
-                        <span>{pick.durationLabel}</span>
-                      </div>
-                      <div className="kids-youtube-card__body">
-                        <div>
-                          <p className="kids-youtube-card__title">{pick.subtitle}</p>
-                          <p className="kids-youtube-card__copy">{pick.description}</p>
-                        </div>
-                        <span className="kids-youtube-card__category" style={{ color: option?.accent ?? '#5b3fd6' }}>
-                          {option?.label ?? pick.categoryId}
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })}
-                {quickPicks.length === 0 && (
-                  <div className="kids-youtube-empty">
-                    허용된 유튜브 카테고리가 없어 확인 가능한 영상 카드가 없어요. 설정에서 카테고리를 켜 주세요.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="kids-analysis-shell">
+            <section className="kids-analysis-shell" ref={playerSectionRef}>
               <div className="kids-analysis-card">
                 <div className="kids-analysis-head">
                   <div>
@@ -480,7 +811,24 @@ export function KidsMainScreen({
                   <span>개인정보 동의 {runtimeSettings?.privacyConsent ? '켜짐' : '꺼짐'}</span>
                 </div>
 
+                <div className="kids-analysis-player">
+                  {playerEmbedUrl ? (
+                    <iframe
+                      title={latestAnalysis?.title ?? playbackItem?.title ?? '키즈 유튜브 재생기'}
+                      src={playerEmbedUrl}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <div className="kids-analysis-player__placeholder">
+                      <strong>안전하게 볼 영상을 고르면 바로 재생돼요.</strong>
+                      <p>추천 영상이나 검색 결과를 누르면 이 자리에서 바로 시청할 수 있어요.</p>
+                    </div>
+                  )}
+                </div>
+
                 {latestAnalysis ? (
+                  <>
                   <div className={`kids-analysis-result${canOpenAnalyzedVideo ? ' kids-analysis-result--ok' : ' kids-analysis-result--blocked'}`}>
                     <div>
                       <strong>
@@ -512,7 +860,7 @@ export function KidsMainScreen({
                         <button
                           type="button"
                           className="kids-analysis-open"
-                          onClick={() => window.open(submittedUrl, '_blank', 'noopener,noreferrer')}
+                          onClick={() => window.open(`https://www.youtube.com/watch?v=${playbackVideoId}`, '_blank', 'noopener,noreferrer')}
                         >
                           영상 열기
                         </button>
@@ -529,54 +877,227 @@ export function KidsMainScreen({
                       )}
                     </div>
                   </div>
+                  </>
                 ) : (
                   <div className="kids-analysis-placeholder">
-                    유튜브 카드 하나를 누르면 주소를 가져와 먼저 확인해 드릴게요.
+                    {playbackVideoId
+                      ? '영상 재생은 시작됐고, 안전 분석 결과를 정리하고 있어요.'
+                      : '추천 영상이나 검색 결과를 누르면 이 자리에서 바로 재생돼요.'}
                   </div>
                 )}
               </div>
 
               <div className="kids-analysis-aside">
-                <div className="kids-aside-card">
-                  <h4>최근 시청</h4>
-                  {viewingHistory.slice(0, 3).map((item) => (
-                    <p key={item.viewingId}>{summarizeHistoryItem(item)}</p>
-                  ))}
-                  {viewingHistory.length === 0 && <p>아직 시청 기록이 없어요.</p>}
-                </div>
-                <div className="kids-aside-card">
-                  <h4>최근 확인 내역</h4>
-                  {analysisHistory.slice(0, 3).map((item) => (
-                    <p key={`${item.analysisId}-${item.inputUrl}`}>
-                      {item.title ?? item.inputUrl} · {item.playback.allowed ? '시청 가능' : '주의 필요'}
-                    </p>
-                  ))}
-                  {analysisHistory.length === 0 && <p>아직 확인한 영상이 없어요.</p>}
-                </div>
-                <div className="kids-aside-card">
-                  <h4>실시간 시청 케어</h4>
-                  <p>상태: {monitorLive?.active ? '실행 중' : monitorLive?.status ?? '대기'}</p>
-                  <p>눈 깜박임: {monitorLive?.blinkBpm != null ? `${Math.round(monitorLive.blinkBpm)}회/분` : '아직 없음'}</p>
-                  <p>자세: {monitorLive?.poseStatus ?? '아직 없음'}</p>
-                  <p>거리: {monitorLive?.screenDistanceCm != null ? `${Math.round(monitorLive.screenDistanceCm)}cm` : '아직 없음'}</p>
-                  <p>정면 응시: {monitorLive?.frontFacing == null ? '아직 없음' : monitorLive.frontFacing ? '정면' : '다른 방향'}</p>
-                  <p>집중도: {monitorLive?.focusScore != null ? `${Math.round(monitorLive.focusScore)}점` : '아직 없음'}</p>
-                  {monitorLive?.errorMessage && <p>{monitorLive.errorMessage}</p>}
-                  {monitorLive?.childMessages?.slice(0, 1).map((message) => (
-                    <p key={message}>{message}</p>
-                  ))}
+                <div className="kids-aside-card kids-aside-card--history">
+                  <div className="kids-aside-card__head">
+                    <h4>시청한 영상 리스트</h4>
+                    <span>{recentReplayItems.length}개</span>
+                  </div>
+                  <p className="kids-aside-card__copy">최근 시청, 최근 확인, 실시간 시청 케어 기록을 한 곳에서 다시 볼 수 있어요.</p>
+                  <div className="kids-aside-video-list">
+                    {recentReplayItems.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={`kids-aside-video-item${playbackVideoId === item.videoId ? ' kids-aside-video-item--active' : ''}`}
+                        onClick={() => handleYoutubeVideoCardClick(item.catalogItem)}
+                      >
+                        <img src={item.catalogItem.thumbnailUrl ?? buildYoutubeThumbnailUrl(item.videoId)} alt={item.title} />
+                        <div className="kids-aside-video-item__body">
+                          <span className="kids-aside-video-item__badge">{item.badge}</span>
+                          <strong>{item.title}</strong>
+                          <p>{item.subtitle}</p>
+                        </div>
+                      </button>
+                    ))}
+                    {recentReplayItems.length === 0 && (
+                      <p className="kids-aside-video-list__empty">아직 다시 볼 영상이 없어요.</p>
+                    )}
+                  </div>
                 </div>
                 <div className="kids-aside-card">
                   <h4>보호 상태</h4>
-                  <p>최근 알림: <span style={{ color: getRiskTone(recentAlerts[0]?.riskLevel) }}>{recentAlerts[0]?.riskLevel ?? '안정'}</span></p>
+                  <p>최근 위험도: <span style={{ color: getRiskTone(recentAlerts[0]?.riskLevel) }}>{recentAlerts[0]?.riskLevel ?? '안정'}</span></p>
                   <p>{summarizeAlert(recentAlerts[0])}</p>
-                  <p>허용 시간: {formatMinutes(activeChild?.watchPolicy.dailyLimitMinutes)}</p>
+                  <p>오늘 제한: {formatMinutes(activeChild?.watchPolicy.dailyLimitMinutes)}</p>
                   <button type="button" className="kids-mini-link" onClick={() => onNavigate('settings-youtube')}>
                     유튜브 필터와 보호 설정 보기
                   </button>
                 </div>
               </div>
             </section>
+
+            <section className="kids-youtube-library">
+              <div className="kids-youtube-library__head">
+                <div>
+                  <h3 className="kids-analysis-title">유튜브 추천 둘러보기</h3>
+                  <p className="kids-analysis-sub">부모가 허용한 카테고리 안에서 추천 영상과 검색 결과를 골라 볼 수 있어요.</p>
+                </div>
+                <span className="kids-analysis-chip">{activeChild?.childName ?? activeProfile.name}</span>
+              </div>
+
+              <div className="kids-youtube-search">
+                <label className="kids-youtube-search__label" htmlFor="kids-youtube-search-input">유튜브 영상 검색</label>
+                <div className="kids-youtube-search__bar">
+                  <input
+                    id="kids-youtube-search-input"
+                    className="kids-youtube-search__input"
+                    value={youtubeSearchQuery}
+                    onChange={(event) => setYoutubeSearchQuery(event.target.value)}
+                    placeholder="공룡, 동물, 학습 영상처럼 검색해 보세요"
+                  />
+                  <button
+                    type="button"
+                    className="kids-youtube-search__button"
+                    onClick={handleYoutubeSearchSubmit}
+                    disabled={youtubeSearchPending}
+                  >
+                    {youtubeSearchPending ? '검색 중' : '검색'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="kids-youtube-library__filters">
+                <button
+                  type="button"
+                  className={`kids-youtube-filter${activeYoutubeCategoryId === 'all' ? ' kids-youtube-filter--active' : ''}`}
+                  onClick={() => setActiveYoutubeCategoryId('all')}
+                >
+                  전체
+                </button>
+                {allowedCategories.map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    className={`kids-youtube-filter${activeYoutubeCategoryId === category.id ? ' kids-youtube-filter--active' : ''}`}
+                    style={{ background: `${category.accent}22`, color: category.accent }}
+                    onClick={() => setActiveYoutubeCategoryId(category.id)}
+                  >
+                    {category.shortLabel}
+                  </button>
+                ))}
+              </div>
+
+              {(youtubeRelatedResults.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).length > 0 || youtubeRelatedPending || youtubeRelatedError) && (
+                <>
+                  <div className="kids-youtube-section-head">
+                    <strong>지금 보는 영상과 비슷한 추천</strong>
+                    <span>{playbackItem?.title ?? (submittedVideoId ? '현재 영상 기준' : '선택 대기')}</span>
+                  </div>
+                  <div className="kids-youtube-thumb-grid">
+                    {youtubeRelatedResults.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).map((item) => (
+                      <button
+                        key={`related-${item.videoId}`}
+                        type="button"
+                        className="kids-youtube-thumb-card"
+                        onClick={() => handleYoutubeVideoCardClick(item)}
+                      >
+                        <div className="kids-youtube-thumb-card__image">
+                          <img src={item.thumbnailUrl ?? buildYoutubeThumbnailUrl(item.videoId)} alt={item.title} />
+                        </div>
+                        <div className="kids-youtube-thumb-card__body">
+                          <strong>{item.title}</strong>
+                          <p>{item.channelTitle ?? '유튜브 채널'}</p>
+                        </div>
+                      </button>
+                    ))}
+                    {youtubeRelatedPending && (
+                      <div className="kids-youtube-empty">현재 고른 영상 기준으로 비슷한 추천을 찾고 있어요.</div>
+                    )}
+                    {youtubeRelatedError && (
+                      <div className="kids-youtube-empty">{youtubeRelatedError}</div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className="kids-youtube-section-head">
+                <strong>추천 영상</strong>
+                <span>{recommendationHeadline}</span>
+              </div>
+
+              <div className="kids-youtube-thumb-grid">
+                {mergedRecommendationItems.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).map((item) => (
+                  <button
+                    key={`example-${item.videoId}`}
+                    type="button"
+                    className="kids-youtube-thumb-card"
+                    onClick={() => handleYoutubeVideoCardClick(item)}
+                  >
+                    <div className="kids-youtube-thumb-card__image">
+                      <img src={item.thumbnailUrl ?? buildYoutubeThumbnailUrl(item.videoId)} alt={item.title} />
+                    </div>
+                    <div className="kids-youtube-thumb-card__body">
+                      <strong>{item.title}</strong>
+                      <p>{item.channelTitle ?? '유튜브 채널'}</p>
+                    </div>
+                  </button>
+                ))}
+                {!youtubeSearchPending && mergedRecommendationItems.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).length === 0 && (
+                  <div className="kids-youtube-empty">
+                    {youtubeSearchResults.length > 0 ? '검색한 조건에 맞는 추천 영상을 아직 불러오지 못했어요.' : '추천 영상을 아직 불러오지 못했어요.'}
+                  </div>
+                )}
+              </div>
+
+              {watchedSearchResults.length > 0 && (
+                <>
+                  <div className="kids-youtube-section-head">
+                    <strong>예전에 본 영상 다시 찾기</strong>
+                    <span>{watchedSearchResults.length}개</span>
+                  </div>
+                  <div className="kids-youtube-thumb-grid">
+                    {watchedSearchResults.map((item) => (
+                      <button
+                        key={`watched-${item.videoId}`}
+                        type="button"
+                        className="kids-youtube-thumb-card"
+                        onClick={() => handleYoutubeVideoCardClick(item)}
+                      >
+                        <div className="kids-youtube-thumb-card__image">
+                          <img src={item.thumbnailUrl ?? buildYoutubeThumbnailUrl(item.videoId)} alt={item.title} />
+                        </div>
+                        <div className="kids-youtube-thumb-card__body">
+                          <strong>{item.title}</strong>
+                          <p>{item.channelTitle ?? '시청 기록'}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {(youtubeSearchError && youtubeSearchResults.length === 0) && (
+                <>
+                  <div className="kids-youtube-section-head">
+                    <strong>검색 결과</strong>
+                    <span>{youtubeSearchResults.length}개</span>
+                  </div>
+                  <div className="kids-youtube-thumb-grid">
+                    {youtubeSearchResults.map((item) => (
+                      <button
+                        key={`search-${item.videoId}`}
+                        type="button"
+                        className="kids-youtube-thumb-card"
+                        onClick={() => handleYoutubeVideoCardClick(item)}
+                      >
+                        <div className="kids-youtube-thumb-card__image">
+                          <img src={item.thumbnailUrl ?? buildYoutubeThumbnailUrl(item.videoId)} alt={item.title} />
+                        </div>
+                        <div className="kids-youtube-thumb-card__body">
+                          <strong>{item.title}</strong>
+                          <p>{item.channelTitle ?? '유튜브 채널'}</p>
+                        </div>
+                      </button>
+                    ))}
+                    {youtubeSearchError && (
+                      <div className="kids-youtube-empty">{youtubeSearchError}</div>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
+
           </motion.div>
         </AnimatePresence>
       </KidsLayout>
@@ -631,6 +1152,10 @@ export function KidsMainScreen({
       </AnimatePresence>
     </>
   )
+}
+
+function buildYoutubeThumbnailUrl(videoId: string) {
+  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
 }
 
 function SideBtn({

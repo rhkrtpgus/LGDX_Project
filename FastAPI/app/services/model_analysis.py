@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import sys
 
 import psycopg
@@ -52,8 +53,19 @@ class AnalysisNotFoundError(RuntimeError):
     """Raised when an analysis row does not exist."""
 
 
+YOUTUBE_VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _build_youtube_watch_url(video_id: str) -> str:
+    normalized = video_id.strip()
+    if not YOUTUBE_VIDEO_ID_PATTERN.fullmatch(normalized):
+        raise ValueError("A valid YouTube videoId is required.")
+
+    return f"https://www.youtube.com/watch?v={normalized}"
 
 
 def _build_playback(harmful: bool, blocked: bool) -> dict:
@@ -268,8 +280,10 @@ def _build_analysis_response_from_row(row: dict) -> AnalysisResponse:
 
 
 def analyze_youtube_video(payload: AnalysisRequest) -> AnalysisResponse:
+    input_url = _build_youtube_watch_url(payload.video_id)
+
     try:
-        result = run_pipeline(payload.video_url)
+        result = run_pipeline(input_url)
     except Exception as exc:
         raise ModelAnalysisError(f"Model pipeline failed: {exc}") from exc
 

@@ -20,7 +20,7 @@ class ManagedMonitorProcess:
     child_id: int
     session_id: str
     analysis_id: int | None
-    video_url: str
+    video_id: str
     started_at: str
     process: subprocess.Popen[str]
 
@@ -47,7 +47,7 @@ def _to_response(
         childId=managed.child_id if managed else None,
         sessionId=managed.session_id if managed else None,
         analysisId=managed.analysis_id if managed else None,
-        videoUrl=managed.video_url if managed else None,
+        videoId=managed.video_id if managed else None,
         startedAt=managed.started_at if managed else None,
     )
 
@@ -66,8 +66,9 @@ def _watch_process(managed: ManagedMonitorProcess) -> None:
         _cleanup_process(managed.child_id, managed.session_id)
 
 
-def _build_command(*, video_url: str, child_id: int, analysis_id: int | None, session_id: str) -> list[str]:
+def _build_command(*, video_id: str, child_id: int, analysis_id: int | None, session_id: str) -> list[str]:
     settings = get_settings()
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
     command = [
         settings.addiction_monitor_python_command,
         str(ADDICTION_SCRIPT),
@@ -114,7 +115,7 @@ def get_active_monitor(child_id: int | None = None) -> MonitorControlResponse:
             childId=managed.child_id,
             sessionId=managed.session_id,
             analysisId=managed.analysis_id,
-            videoUrl=managed.video_url,
+            videoId=managed.video_id,
             startedAt=managed.started_at,
         )
 
@@ -126,7 +127,7 @@ def get_active_monitor(child_id: int | None = None) -> MonitorControlResponse:
     )
 
 
-def start_background_monitor(*, video_url: str, child_id: int, analysis_id: int | None) -> MonitorControlResponse:
+def start_background_monitor(*, video_id: str, child_id: int, analysis_id: int | None) -> MonitorControlResponse:
     if not ADDICTION_SCRIPT.exists():
         raise MonitorRuntimeError(f"addiction.py not found: {ADDICTION_SCRIPT}")
 
@@ -134,7 +135,7 @@ def start_background_monitor(*, video_url: str, child_id: int, analysis_id: int 
 
     session_id = build_monitor_session_id()
     command = _build_command(
-        video_url=video_url,
+        video_id=video_id,
         child_id=child_id,
         analysis_id=analysis_id,
         session_id=session_id,
@@ -155,7 +156,7 @@ def start_background_monitor(*, video_url: str, child_id: int, analysis_id: int 
         child_id=child_id,
         session_id=session_id,
         analysis_id=analysis_id,
-        video_url=video_url,
+        video_id=video_id,
         started_at=_utc_now_iso(),
         process=process,
     )

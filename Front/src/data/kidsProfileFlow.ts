@@ -21,6 +21,7 @@ export type ScreenId =
   | 'settings-youtube'
   | 'settings-history'
   | 'watch-history'
+  | 'tv-live'
   | 'pin'
 
 export const AUTO_ADVANCE: Partial<Record<ScreenId, ScreenId>> = {

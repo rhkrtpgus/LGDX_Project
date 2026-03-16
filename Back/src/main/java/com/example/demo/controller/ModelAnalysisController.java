@@ -23,7 +23,7 @@ public class ModelAnalysisController {
 
 	@PostMapping("/youtube")
 	public AnalysisResponse analyzeYoutube(@RequestBody AnalysisRequest request) {
-		return modelAnalysisService.analyzeYoutubeVideo(request.videoUrl(), request.childId());
+		return modelAnalysisService.analyzeYoutubeVideo(request.videoId(), request.childId());
 	}
 
 	@GetMapping("/history")

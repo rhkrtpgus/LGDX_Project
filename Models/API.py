@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "AIzaSyBpPCj5mvYYdxOxKrGwm7Pdxp3cI8_uPbA")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 YOUTUBE_REGION_CODE = "KR"
 TARGET_FPS = 24.0
 MAX_SAMPLED_FRAMES = 480
@@ -326,6 +326,37 @@ def get_category_name(
     return "Unknown"
 
 
+def get_video_metadata_from_ytdlp(video_url: str) -> tuple[str, str, int]:
+    with yt_dlp.YoutubeDL({
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "extract_flat": "in_playlist",
+        "skip_download": True,
+    }) as ydl:
+        info = ydl.extract_info(video_url, download=False)
+
+    title = info.get("title") or "Unknown title"
+    duration_seconds = int(info.get("duration") or 0)
+    category_name_en = (
+        (info.get("categories") or [None])[0]
+        or info.get("category")
+        or "Unknown"
+    )
+    category_id = next(
+        (key for key, value in CATEGORY_ID_TO_NAME.items() if value == category_name_en),
+        "0",
+    )
+
+    logger.info(
+        "Fetched fallback metadata via yt-dlp: title=%s, category_name=%s, duration_seconds=%s",
+        title,
+        category_name_en,
+        duration_seconds,
+    )
+    return title, category_id, duration_seconds
+
+
 def translate_category_name(category_name_en: str) -> str:
     return CATEGORY_TRANSLATIONS.get(category_name_en, category_name_en)
 
@@ -566,10 +597,34 @@ def analyze_models(
 
 
 def fetch_youtube_video_context(video_url: str) -> YouTubeVideoContext:
-    youtube_client = build_youtube_client()
     video_id = extract_video_id(video_url)
-    title, category_id, duration_seconds = get_video_metadata(youtube_client, video_id)
-    category_name_en = get_category_name(youtube_client, category_id)
+    try:
+        youtube_client = build_youtube_client()
+        title, category_id, duration_seconds = get_video_metadata(youtube_client, video_id)
+        category_name_en = get_category_name(youtube_client, category_id)
+    except Exception as exc:
+        logger.warning("Falling back to yt-dlp metadata for %s: %s", video_url, exc)
+        try:
+            title, category_id, duration_seconds = get_video_metadata_from_ytdlp(video_url)
+            category_name_en = CATEGORY_ID_TO_NAME.get(category_id, "Unknown")
+            if category_name_en == "Unknown":
+                with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+                    info = ydl.extract_info(video_url, download=False)
+                category_name_en = (
+                    (info.get("categories") or [None])[0]
+                    or info.get("category")
+                    or "Unknown"
+                )
+        except Exception as fallback_exc:
+            logger.warning(
+                "Could not load fallback metadata for %s, using minimal context instead: %s",
+                video_url,
+                fallback_exc,
+            )
+            title = f"YouTube video {video_id}"
+            category_id = "0"
+            duration_seconds = 0
+            category_name_en = "Unknown"
     category_name_ko = translate_category_name(category_name_en)
     is_short_form = duration_seconds > 0 and duration_seconds <= 180
 
@@ -595,16 +650,39 @@ def run_pipeline(video_url: str) -> AnalysisResult:
         video_context.category_name_ko,
     )
 
-    stream_url = get_stream_url(video_url)
-    frames, source_fps, sampled_fps = sample_stream_frames(stream_url)
+    stream_url = None
+    source_fps = 0.0
+    sampled_fps = 0.0
+    frames = []
+    nudity_result = {
+        "has_nudity": False,
+        "match_count": 0,
+        "matches": [],
+    }
+    violence_result = {
+        "has_violence": False,
+        "violence_score": 0.0,
+        "positive_window_count": 0,
+        "window_scores": [],
+    }
 
-    nude_detector, violence_detector = load_detectors()
-    nudity_result, violence_result = analyze_models(
-        frames=frames,
-        sampled_fps=sampled_fps,
-        nude_detector=nude_detector,
-        violence_detector=violence_detector,
-    )
+    try:
+        stream_url = get_stream_url(video_url)
+        frames, source_fps, sampled_fps = sample_stream_frames(stream_url)
+
+        nude_detector, violence_detector = load_detectors()
+        nudity_result, violence_result = analyze_models(
+            frames=frames,
+            sampled_fps=sampled_fps,
+            nude_detector=nude_detector,
+            violence_detector=violence_detector,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Falling back to metadata-only analysis for %s because stream/model analysis failed: %s",
+            video_url,
+            exc,
+        )
 
     harmful_reasons = []
     if category_filter.is_blocked:

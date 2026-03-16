@@ -25,6 +25,13 @@
     <result property="updatedAt" column="updated_at" />
   </resultMap>
 
+  <resultMap id="youtubeCategoryFilterResultMap" type="com.example.demo.domain.ChildYoutubeCategoryFilterRecord">
+    <id property="childId" column="child_id" />
+    <id property="categoryId" column="category_id" />
+    <result property="enabled" column="enabled" />
+    <result property="updatedAt" column="updated_at" />
+  </resultMap>
+
   <resultMap id="parentAlertResultMap" type="com.example.demo.dto.ParentAlertResponse">
     <id property="alertId" column="alert_id" />
     <result property="viewingId" column="viewing_id" />
@@ -156,6 +163,34 @@
       sunday_limit_minutes = excluded.sunday_limit_minutes,
       notification_threshold = excluded.notification_threshold,
       auto_block_enabled = excluded.auto_block_enabled,
+      updated_at = current_timestamp
+  </insert>
+
+  <select id="findYoutubeCategoryFiltersByChildId" resultMap="youtubeCategoryFilterResultMap">
+    select
+      child_id as child_id,
+      category_id as category_id,
+      enabled as enabled,
+      updated_at as updated_at
+    from child_youtube_category_filter
+    where child_id = #{childId}
+    order by category_id asc
+  </select>
+
+  <insert id="upsertYoutubeCategoryFilter" parameterType="com.example.demo.domain.ChildYoutubeCategoryFilterRecord">
+    insert into child_youtube_category_filter (
+      child_id,
+      category_id,
+      enabled,
+      updated_at
+    ) values (
+      #{childId},
+      #{categoryId},
+      #{enabled},
+      current_timestamp
+    )
+    on conflict (child_id, category_id) do update set
+      enabled = excluded.enabled,
       updated_at = current_timestamp
   </insert>
 

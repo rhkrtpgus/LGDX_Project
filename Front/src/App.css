@@ -2544,11 +2544,11 @@
   gap: 24px;
   width: 100%;
   padding: 28px 36px 36px;
-  color: #2f2610;
+  color: #f5f7fb;
   background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.34), transparent 28%),
-    radial-gradient(circle at left center, rgba(255, 228, 121, 0.42), transparent 34%),
-    linear-gradient(180deg, #ffd95b 0%, #f6c63a 100%);
+    radial-gradient(circle at top right, rgba(130, 143, 170, 0.18), transparent 24%),
+    radial-gradient(circle at left center, rgba(255, 255, 255, 0.06), transparent 28%),
+    linear-gradient(180deg, #1c1f28 0%, #14161d 100%);
 }
 
 .vh-screen__hero {
@@ -2557,9 +2557,9 @@
   gap: 10px;
   padding: 28px 30px;
   border-radius: 24px;
-  background: rgba(255, 248, 220, 0.68);
-  border: 1px solid rgba(118, 86, 15, 0.12);
-  box-shadow: 0 22px 44px rgba(130, 92, 13, 0.16);
+  background: rgba(28, 31, 42, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.28);
 }
 
 .vh-screen__hero h2 {
@@ -2574,20 +2574,130 @@
   max-width: 860px;
   font-size: 14px;
   line-height: 1.7;
-  color: rgba(63, 46, 9, 0.78);
+  color: rgba(229, 235, 247, 0.72);
 }
 
 .vh-screen__badge {
   align-self: flex-start;
   padding: 7px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.46);
-  border: 1px solid rgba(161, 118, 17, 0.22);
-  color: #7c5700;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #dbe4f6;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.vh-screen__link {
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #7c4dff 0%, #4aaef5 100%);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tv-live-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background:
+    radial-gradient(circle at top right, rgba(79, 201, 191, 0.12), transparent 28%),
+    linear-gradient(180deg, #151821 0%, #0d1016 100%);
+}
+
+.tv-live-shell {
+  width: min(760px, 100%);
+  padding: 36px;
+  border-radius: 28px;
+  background: rgba(21, 25, 35, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 32px 60px rgba(0, 0, 0, 0.34);
+  color: #f5f7fb;
+}
+
+.tv-live-shell__badge {
+  display: inline-flex;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(62, 207, 191, 0.16);
+  color: #79efe1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tv-live-shell h2 {
+  margin: 18px 0 12px;
+  font-size: clamp(28px, 2.4vw, 38px);
+  line-height: 1.2;
+}
+
+.tv-live-shell p {
+  margin: 0;
+  color: rgba(239, 243, 251, 0.72);
+  line-height: 1.7;
+}
+
+.tv-live-shell__button {
+  margin-top: 28px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #4fc9bf 0%, #31a7d8 100%);
+  color: #071318;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.msl-pin-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.msl-pin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(232, 237, 248, 0.72);
+}
+
+.msl-pin-field input {
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f7fb;
+  padding: 0 14px;
+}
+
+.msl-pin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.msl-pin-save {
+  min-width: 116px;
+  height: 42px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #7c4dff 0%, #4aaef5 100%);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .vhp-root {
@@ -2961,6 +3071,75 @@
   font-size: clamp(18px, 1.45vw, 24px);
   font-weight: 800;
   color: #fff;
+}
+
+.vh-screen__player {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 28px 28px;
+  border-radius: 24px;
+  background: rgba(28, 31, 42, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.22);
+}
+
+.vh-screen__player-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.vh-screen__player-head h3 {
+  margin: 8px 0 6px;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.vh-screen__player-head p {
+  margin: 0;
+  color: rgba(229, 235, 247, 0.72);
+  line-height: 1.6;
+}
+
+.vh-screen__player-frame {
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.38);
+  aspect-ratio: 16 / 9;
+}
+
+.vh-screen__player-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.vh-screen__player-placeholder {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px;
+  text-align: center;
+  color: rgba(229, 235, 247, 0.78);
+}
+
+.vh-screen__player-placeholder strong {
+  font-size: 18px;
+  color: #fff;
+}
+
+.vh-screen__player-placeholder p {
+  max-width: 480px;
+  margin: 0;
+  line-height: 1.7;
 }
 .wos-hero-overlay span {
   max-width: min(420px, 90%);
@@ -6951,14 +7130,140 @@
   margin-top: 14px;
 }
 
+.kids-youtube-search {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.kids-youtube-search__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1d2033;
+}
+
+.kids-youtube-search__bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.kids-youtube-search__input {
+  min-width: 0;
+  border-radius: 16px;
+  border: 1px solid rgba(29, 32, 51, 0.1);
+  background: rgba(255, 255, 255, 0.92);
+  color: #1d2033;
+  font: inherit;
+  padding: 14px 16px;
+}
+
+.kids-youtube-search__input::placeholder {
+  color: rgba(29, 32, 51, 0.4);
+}
+
+.kids-youtube-search__button {
+  border: none;
+  border-radius: 16px;
+  padding: 0 18px;
+  min-width: 88px;
+  background: linear-gradient(135deg, #ff6565 0%, #ff9559 100%);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.kids-youtube-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.kids-youtube-section-head strong {
+  font-size: 15px;
+  color: #1d2033;
+}
+
+.kids-youtube-section-head span {
+  font-size: 12px;
+  color: rgba(29, 32, 51, 0.56);
+}
+
+.kids-youtube-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.kids-youtube-thumb-card {
+  border: 1px solid rgba(29, 32, 51, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.kids-youtube-thumb-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.12);
+}
+
+.kids-youtube-thumb-card__image {
+  aspect-ratio: 16 / 9;
+  background: rgba(29, 32, 51, 0.08);
+}
+
+.kids-youtube-thumb-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kids-youtube-thumb-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 14px;
+}
+
+.kids-youtube-thumb-card__body strong {
+  font-size: 14px;
+  color: #1d2033;
+  line-height: 1.4;
+}
+
+.kids-youtube-thumb-card__body p {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(29, 32, 51, 0.6);
+}
+
 .kids-youtube-filter {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 34px;
   padding: 0 12px;
+  border: none;
   border-radius: 999px;
+  background: rgba(29, 32, 51, 0.08);
+  color: #1d2033;
   font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.kids-youtube-filter--active {
+  box-shadow: 0 0 0 2px rgba(29, 32, 51, 0.12) inset;
 }
 
 .kids-youtube-grid {
@@ -6990,25 +7295,39 @@
 }
 
 .kids-youtube-card__visual {
+  position: relative;
   min-height: 120px;
   padding: 16px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   color: #fff;
+  overflow: hidden;
+}
+
+.kids-youtube-card__thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.32;
 }
 
 .kids-youtube-card__visual strong {
+  position: relative;
   font-size: 18px;
   line-height: 1.35;
 }
 
 .kids-youtube-card__visual span:last-child {
+  position: relative;
   font-size: 12px;
   opacity: 0.9;
 }
 
 .kids-youtube-card__badge {
+  position: relative;
   align-self: flex-start;
   padding: 5px 9px;
   border-radius: 999px;
@@ -7183,6 +7502,42 @@
   font-size: 13px;
 }
 
+.kids-analysis-player {
+  margin-top: 16px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: rgba(29, 32, 51, 0.08);
+  border: 1px solid rgba(29, 32, 51, 0.08);
+}
+
+.kids-analysis-player iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: none;
+  background: #000;
+}
+
+.kids-analysis-player__placeholder {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  color: #1d2033;
+}
+
+.kids-analysis-player__placeholder strong {
+  display: block;
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.kids-analysis-player__placeholder p {
+  margin: 0;
+  color: rgba(29, 32, 51, 0.72);
+}
+
 .kids-analysis-risk {
   opacity: 0.72;
 }
@@ -7202,6 +7557,110 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.kids-aside-card--history {
+  gap: 14px;
+}
+
+.kids-aside-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kids-aside-card__head h4 {
+  margin: 0;
+}
+
+.kids-aside-card__head span {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(29, 32, 51, 0.54);
+}
+
+.kids-aside-card__copy {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(29, 32, 51, 0.66);
+}
+
+.kids-aside-video-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kids-aside-video-item {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(29, 32, 51, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.kids-aside-video-item:hover,
+.kids-aside-video-item--active {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(17, 18, 25, 0.12);
+  border-color: rgba(54, 100, 255, 0.28);
+}
+
+.kids-aside-video-item img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 12px;
+  background: #0f1017;
+}
+
+.kids-aside-video-item__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kids-aside-video-item__body strong {
+  color: #1d2033;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.kids-aside-video-item__body p {
+  margin: 0;
+  color: rgba(29, 32, 51, 0.68);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.kids-aside-video-item__badge {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(79, 113, 255, 0.12);
+  color: #4259d2;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kids-aside-video-list__empty {
+  margin: 0;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.55);
+  color: rgba(29, 32, 51, 0.68);
+  text-align: center;
+  line-height: 1.6;
 }
 
 .youtube-care-screen {
@@ -7461,6 +7920,275 @@
   line-height: 1.5;
 }
 
+.youtube-care-page--search {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.youtube-care-hero--search {
+  margin-bottom: 0;
+}
+
+.youtube-care-search {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.youtube-care-search__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.youtube-care-search__label {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.youtube-care-search__bar {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 22px;
+  background: rgba(16, 18, 30, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.youtube-care-search__input {
+  flex: 1;
+  min-width: 0;
+  height: 54px;
+  padding: 0 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  font-size: 18px;
+}
+
+.youtube-care-search__button {
+  min-width: 108px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ff4f7a, #ff7c4d);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.youtube-care-search__button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.youtube-care-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.youtube-care-results,
+.youtube-care-player,
+.youtube-care-related {
+  padding: 22px;
+  border-radius: 24px;
+  background: rgba(15, 18, 29, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+}
+
+.youtube-care-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.youtube-care-section-head h3 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  color: #fff;
+}
+
+.youtube-care-section-head p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.youtube-care-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(77, 212, 172, 0.12);
+  color: #9ce4ca;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.youtube-care-video-list {
+  display: grid;
+  gap: 12px;
+}
+
+.youtube-care-video-list--related {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.youtube-care-video-card {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.youtube-care-video-card:hover,
+.youtube-care-video-card--active {
+  transform: translateY(-2px);
+  border-color: rgba(113, 196, 255, 0.46);
+  background: rgba(113, 196, 255, 0.1);
+}
+
+.youtube-care-video-card__thumb {
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  aspect-ratio: 16 / 9;
+}
+
+.youtube-care-video-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.youtube-care-video-card__body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.youtube-care-video-card__body strong {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.youtube-care-video-card__body p,
+.youtube-care-video-card__body span {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.youtube-care-player {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.youtube-care-player__frame {
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.38);
+  aspect-ratio: 16 / 9;
+}
+
+.youtube-care-player__frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.youtube-care-player__placeholder {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 28px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.youtube-care-player__placeholder strong {
+  font-size: 18px;
+  color: #fff;
+}
+
+.youtube-care-player__placeholder p {
+  margin: 0;
+  max-width: 460px;
+  line-height: 1.7;
+}
+
+.youtube-care-empty {
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.6;
+}
+
+.youtube-care-empty--error {
+  border: 1px solid rgba(255, 120, 120, 0.28);
+  background: rgba(255, 120, 120, 0.08);
+  color: #ffd2d2;
+}
+
+.youtube-care-related {
+  margin-top: 4px;
+}
+
+@media (max-width: 1280px) {
+  .youtube-care-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 840px) {
+  .youtube-care-search__bar {
+    flex-direction: column;
+  }
+
+  .youtube-care-summary,
+  .youtube-care-status-board {
+    grid-template-columns: 1fr;
+  }
+
+  .youtube-care-video-card {
+    grid-template-columns: 1fr;
+  }
+
+  .youtube-care-hero,
+  .youtube-care-section-head {
+    flex-direction: column;
+  }
+}
+
 .kids-aside-card {
   padding: 18px 18px 14px;
   background: rgba(28, 32, 51, 0.88);
@@ -7481,9 +8209,19 @@
 
 .thinq-dashboard {
   max-width: 1100px;
+  width: min(1100px, calc(100vw - 64px));
+  margin: 0 auto;
+  padding: 0 0 40px;
+  box-sizing: border-box;
 }
 
 .thinq-screen-shell {
+  width: 100%;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  padding: 0 0 28px;
   background:
     radial-gradient(circle at top right, rgba(91, 108, 246, 0.16), transparent 28%),
     linear-gradient(180deg, #121522 0%, #0b0d16 100%);
@@ -7494,6 +8232,12 @@
   align-items: center;
   gap: 16px;
   padding: 24px 32px 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(12, 15, 26, 0.96) 0%, rgba(12, 15, 26, 0.82) 72%, rgba(12, 15, 26, 0) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .thinq-page-back {
