@@ -1,7 +1,18 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="84" fill="#FFFFFF"/>
-  <path d="M193 94C173 100 160 125 169 145L199 213C205 228 206 244 202 260C198 275 196 287 197 296C202 337 241 359 276 342L375 294C410 277 423 232 400 200L289 102C266 81 227 77 193 94Z" fill="url(#paint0_linear_145_3)"/>
-  <text x="256" y="404" text-anchor="middle" fill="#4A556D" font-size="76" font-weight="500" font-family="Arial, Helvetica, sans-serif" letter-spacing="-2">coupang play</text>
+  <rect width="512" height="512" rx="84" fill="#F7F7F9"/>
+  <path d="M192 92C172 98 160 122 170 142L198 208C205 224 206 240 202 256C198 271 196 284 198 294C203 334 241 356 276 340L372 292C407 275 419 232 398 200L291 102C267 82 228 77 192 92Z" fill="url(#paint0_linear_145_3)"/>
+  <text
+    x="256"
+    y="394"
+    text-anchor="middle"
+    fill="#4A556D"
+    font-size="58"
+    font-weight="600"
+    font-family="Arial, Helvetica, sans-serif"
+    letter-spacing="-1.5"
+  >
+    coupang play
+  </text>
   <defs>
     <linearGradient id="paint0_linear_145_3" x1="177" y1="112" x2="351" y2="318" gradientUnits="userSpaceOnUse">
       <stop stop-color="#3DE3E8"/>

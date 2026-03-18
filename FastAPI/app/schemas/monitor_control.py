@@ -5,6 +5,9 @@ class MonitorStartRequest(BaseModel):
     video_id: str = Field(alias="videoId", min_length=1)
     child_id: int = Field(alias="childId", ge=1)
     analysis_id: int | None = Field(default=None, alias="analysisId")
+    blink_guidance_enabled: bool = Field(default=True, alias="blinkGuidanceEnabled")
+    posture_guidance_enabled: bool = Field(default=True, alias="postureGuidanceEnabled")
+    distance_guidance_enabled: bool = Field(default=True, alias="distanceGuidanceEnabled")
 
     model_config = {
         "populate_by_name": True,

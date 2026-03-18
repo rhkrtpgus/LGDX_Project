@@ -20,6 +20,15 @@ public interface ParentControlMapper {
 
 	List<ChildProfile> findChildrenByFamilyId(@Param("familyId") int familyId);
 
+	Integer nextChildId();
+
+	void insertChild(
+		@Param("childId") int childId,
+		@Param("familyId") int familyId,
+		@Param("childName") String childName,
+		@Param("birthYear") int birthYear
+	);
+
 	ChildWatchPolicyRecord findWatchPolicyByChildId(@Param("childId") int childId);
 
 	void upsertWatchPolicy(ChildWatchPolicyRecord record);

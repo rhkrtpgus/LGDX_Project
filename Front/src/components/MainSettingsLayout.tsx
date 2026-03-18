@@ -10,6 +10,7 @@ import type {
   AnalysisResponse,
   ParentAlertResponse,
   ChildWatchPolicyResponse,
+  MonitorGuidanceSettings,
   ParentChildResponse,
   ParentViewingHistoryResponse,
   RuntimeSettingsResponse,
@@ -27,6 +28,8 @@ type Props = {
   activeProfileId: string
   onUpdateTimeLimit: (id: string, mins: number) => void
   onUpdateWatchPolicy: (childId: number, patch: Partial<ChildWatchPolicyResponse>) => Promise<void> | void
+  monitorGuidanceSettings?: MonitorGuidanceSettings
+  onUpdateMonitorGuidanceSettings?: (childId: number, patch: Partial<MonitorGuidanceSettings>) => void
   initialSection?: NavId
   familyName: string
   childSummaries: ParentChildResponse[]
@@ -59,6 +62,8 @@ export function MainSettingsLayout({
   activeProfileId,
   onUpdateTimeLimit,
   onUpdateWatchPolicy,
+  monitorGuidanceSettings,
+  onUpdateMonitorGuidanceSettings,
   initialSection = 'network',
   familyName,
   childSummaries,
@@ -123,6 +128,8 @@ export function MainSettingsLayout({
                 childSummary={selectedChildSummary ?? null}
                 onUpdateTimeLimit={onUpdateTimeLimit}
                 onUpdateWatchPolicy={onUpdateWatchPolicy}
+                monitorGuidanceSettings={monitorGuidanceSettings}
+                onUpdateMonitorGuidanceSettings={onUpdateMonitorGuidanceSettings}
                 onSave={() => setFamilyDetailId(null)}
                 onCancel={() => setFamilyDetailId(null)}
               />

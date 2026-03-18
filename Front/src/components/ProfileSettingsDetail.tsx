@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import type { ChildProfile } from '../data/profiles'
 import { getThemeByAge } from '../data/profiles'
-import type { ChildWatchPolicyResponse, ParentChildResponse } from '../lib/api'
+import type { ChildWatchPolicyResponse, MonitorGuidanceSettings, ParentChildResponse } from '../lib/api'
 
 // ─── 등급 데이터 ──────────────────────────────────────────────────────────────
 const RATINGS = [
@@ -109,6 +109,8 @@ type Props = {
   onCancel: () => void
   onUpdateTimeLimit: (id: string, mins: number) => void
   onUpdateWatchPolicy?: (childId: number, patch: Partial<ChildWatchPolicyResponse>) => Promise<void> | void
+  monitorGuidanceSettings?: MonitorGuidanceSettings
+  onUpdateMonitorGuidanceSettings?: (childId: number, patch: Partial<MonitorGuidanceSettings>) => void
 }
 
 // ─── 컴포넌트 ─────────────────────────────────────────────────────────────────
@@ -119,6 +121,8 @@ export function ProfileSettingsDetail({
   onCancel,
   onUpdateTimeLimit,
   onUpdateWatchPolicy,
+  monitorGuidanceSettings,
+  onUpdateMonitorGuidanceSettings,
 }: Props) {
   const theme = getThemeByAge(profile.age)
   const policy = childSummary?.watchPolicy ?? null
@@ -136,12 +140,17 @@ export function ProfileSettingsDetail({
   const [protectOn,   setProtect]    = useState(policy?.autoBlockEnabled ?? true)
   const [isDirty,     setIsDirty]    = useState(false)
   const [camFeatures, setCamFeatures] = useState<Record<CamKey, boolean>>({
-    posture: false, blink: false, distance: false,
+    posture: monitorGuidanceSettings?.posture ?? true,
+    blink: monitorGuidanceSettings?.blink ?? true,
+    distance: monitorGuidanceSettings?.distance ?? true,
   })
   const tooltipRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const camChanged = Object.values(camFeatures).some(v => v)
+    const camChanged =
+      camFeatures.posture !== (monitorGuidanceSettings?.posture ?? true) ||
+      camFeatures.blink !== (monitorGuidanceSettings?.blink ?? true) ||
+      camFeatures.distance !== (monitorGuidanceSettings?.distance ?? true)
     setIsDirty(
       timeLimit !== (policy?.dailyLimitMinutes ?? profile.timeLimit) ||
       !areDayLimitsEqual(dayLimits, buildDayLimits(policy, profile.timeLimit)) ||
@@ -151,7 +160,7 @@ export function ProfileSettingsDetail({
       protectOn !== (policy?.autoBlockEnabled ?? true) ||
       camChanged
     )
-  }, [bedtimeHour, bedtimeOn, camFeatures, dayLimits, policy, profile.timeLimit, protectOn, ratingIdx, timeLimit])
+  }, [bedtimeHour, bedtimeOn, camFeatures, dayLimits, monitorGuidanceSettings?.blink, monitorGuidanceSettings?.distance, monitorGuidanceSettings?.posture, policy, profile.timeLimit, protectOn, ratingIdx, timeLimit])
 
   useEffect(() => {
     setTimeLimit(policy?.dailyLimitMinutes ?? profile.timeLimit)
@@ -159,8 +168,13 @@ export function ProfileSettingsDetail({
     setBedtime(policy?.bedtimeLockEnabled ?? false)
     setBedHour(policy?.bedtimeHour ?? 21)
     setProtect(policy?.autoBlockEnabled ?? true)
+    setCamFeatures({
+      posture: monitorGuidanceSettings?.posture ?? true,
+      blink: monitorGuidanceSettings?.blink ?? true,
+      distance: monitorGuidanceSettings?.distance ?? true,
+    })
     setIsDirty(false)
-  }, [policy, profile.timeLimit])
+  }, [monitorGuidanceSettings?.blink, monitorGuidanceSettings?.distance, monitorGuidanceSettings?.posture, policy, profile.timeLimit])
 
   // 외부 클릭 시 툴팁 닫기
   useEffect(() => {
@@ -192,9 +206,12 @@ export function ProfileSettingsDetail({
     } else {
       onUpdateTimeLimit(profile.id, timeLimit)
     }
+    if (childId != null && onUpdateMonitorGuidanceSettings) {
+      onUpdateMonitorGuidanceSettings(childId, camFeatures)
+    }
     onSave({ timeLimit })
     setIsDirty(false)
-  }, [bedtimeHour, bedtimeOn, childSummary?.childId, dayLimits, onSave, onUpdateTimeLimit, onUpdateWatchPolicy, profile.id, protectOn, timeLimit])
+  }, [bedtimeHour, bedtimeOn, camFeatures, childSummary?.childId, dayLimits, onSave, onUpdateMonitorGuidanceSettings, onUpdateTimeLimit, onUpdateWatchPolicy, profile.id, protectOn, timeLimit])
 
   const ratingInfo = RATINGS[ratingIdx]
 

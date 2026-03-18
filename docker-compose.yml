@@ -8,6 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-12345}
     ports:
       - "${POSTGRES_PORT:-3355}:5432"
+      - "${POSTGRES_UI_PORT:-3356}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

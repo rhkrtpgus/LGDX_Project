@@ -12,6 +12,7 @@ import {
 
 import {
   analyzeYoutube,
+  createChildProfile,
   getActiveAddictionMonitor,
   getAnalysisHistory,
   getMonitorLive,
@@ -30,6 +31,7 @@ import {
   updateWatchPolicy,
   type AnalysisResponse,
   type MonitorControlResponse,
+  type MonitorGuidanceSettings,
   type MonitorLiveResponse,
   type ParentAlertResponse,
   type ParentChildResponse,
@@ -62,6 +64,7 @@ import { ViewingHistoryScreen } from './components/ViewingHistoryScreen'
 import { ProfileCreateFormScreen } from './components/ProfileCreateFormScreen'
 import { PinScreen } from './components/PinScreen'
 import { YoutubeCareScreen } from './components/YoutubeCareScreen'
+import { BearIcon } from './components/BearIcon'
 import { ProfileSelectScreen } from './components/ProfileSelectScreen'
 import { TvLiveScreen } from './components/TvLiveScreen'
 
@@ -77,6 +80,7 @@ const BLINK_GUIDANCE_DURATION_MS = 30_000
 const BUBBLE_BURST_DURATION_MS = 1100
 const PARENT_PIN_STORAGE_KEY = 'lgdx-parent-pin'
 const YOUTUBE_CATEGORY_STORAGE_KEY = 'lgdx-youtube-category-settings'
+const MONITOR_GUIDANCE_STORAGE_KEY = 'lgdx-monitor-guidance-settings'
 
 type ToastTone = 'info' | 'warning' | 'danger' | 'success'
 
@@ -159,8 +163,8 @@ function buildKidsCarePopup(
     case 'blink_low':
       return {
         trigger: normalizedTrigger,
-        title: '눈을 한 번 깜박여 주세요',
-        message: '눈이 조금 지쳐 보여요. 천천히 한 번 깜박이면 비눗방울이 사라져요.',
+        title: '눈을 깜박여볼까요',
+        message: '눈을 깜박이면 비눗방울이 사라져요.',
         showBubbles: true,
       }
     case 'blink_high':
@@ -289,6 +293,58 @@ function persistYoutubeCategorySettings(settingsByChildId: Record<number, Youtub
   window.localStorage.setItem(YOUTUBE_CATEGORY_STORAGE_KEY, JSON.stringify(settingsByChildId))
 }
 
+function buildDefaultMonitorGuidanceSettings(): MonitorGuidanceSettings {
+  return {
+    posture: true,
+    blink: true,
+    distance: true,
+  }
+}
+
+function normalizeMonitorGuidanceSettings(
+  settings: Partial<MonitorGuidanceSettings> | null | undefined,
+): MonitorGuidanceSettings {
+  return {
+    ...buildDefaultMonitorGuidanceSettings(),
+    ...(settings ?? {}),
+  }
+}
+
+function loadStoredMonitorGuidanceSettings() {
+  if (typeof window === 'undefined') {
+    return {} as Record<number, MonitorGuidanceSettings>
+  }
+
+  try {
+    const raw = window.localStorage.getItem(MONITOR_GUIDANCE_STORAGE_KEY)
+    if (!raw) {
+      return {} as Record<number, MonitorGuidanceSettings>
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, Partial<MonitorGuidanceSettings>>
+    return Object.fromEntries(
+      Object.entries(parsed).map(([childId, settings]) => [
+        Number(childId),
+        normalizeMonitorGuidanceSettings(settings),
+      ]),
+    ) as Record<number, MonitorGuidanceSettings>
+  } catch {
+    return {} as Record<number, MonitorGuidanceSettings>
+  }
+}
+
+function persistMonitorGuidanceSettings(settingsByChildId: Record<number, MonitorGuidanceSettings>) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(MONITOR_GUIDANCE_STORAGE_KEY, JSON.stringify(settingsByChildId))
+}
+
+function deriveBirthYearFromAge(age: number, nowYear = new Date().getFullYear()) {
+  return Math.max(2000, nowYear - age + 1)
+}
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenId>('main')
   const [profiles, setProfiles] = useState<ChildProfile[]>([...DEFAULT_PROFILES])
@@ -314,10 +370,12 @@ export default function App() {
   const [serverLoading, setServerLoading] = useState(true)
   const [serverError, setServerError] = useState<string | null>(null)
   const [youtubeCategorySettingsByChildId, setYoutubeCategorySettingsByChildId] = useState<Record<number, YoutubeCategorySettings>>(loadStoredYoutubeCategorySettings)
+  const [monitorGuidanceSettingsByChildId, setMonitorGuidanceSettingsByChildId] = useState<Record<number, MonitorGuidanceSettings>>(loadStoredMonitorGuidanceSettings)
   const [alertToasts, setAlertToasts] = useState<AlertToast[]>([])
   const [blinkBubbleState, setBlinkBubbleState] = useState<BlinkBubbleState>('hidden')
   const seenToastKeysRef = useRef<Set<string>>(new Set())
   const countedToastMetricKeysRef = useRef<Set<string>>(new Set())
+  const countedViewingMetricKeysRef = useRef<Set<string>>(new Set())
   const blinkBubbleTimerRef = useRef<number | null>(null)
   const blinkBubbleMaxTimerRef = useRef<number | null>(null)
   const lowBlinkBubbleEpisodeShownRef = useRef(false)
@@ -343,6 +401,43 @@ export default function App() {
   const handleGoHome = useCallback(() => {
     setProfileMode('adult')
     setCurrentScreen('main')
+  }, [])
+
+  const incrementViewingCount = useCallback((metricKey: string, mode: 'increment' | 'ensure' = 'increment', baseline = 0) => {
+    if (countedViewingMetricKeysRef.current.has(metricKey)) {
+      return
+    }
+
+    countedViewingMetricKeysRef.current.add(metricKey)
+    setFamilyOverview((prev) => {
+      if (!prev) {
+        return prev
+      }
+
+      if (mode === 'ensure') {
+        return {
+          ...prev,
+          todayViewingCount: Math.max(prev.todayViewingCount, baseline + 1),
+        }
+      }
+
+      return {
+        ...prev,
+        todayViewingCount: prev.todayViewingCount + 1,
+      }
+    })
+  }, [])
+
+  const incrementAlertCount = useCallback((count: number) => {
+    if (count <= 0) {
+      return
+    }
+
+    setFamilyOverview((prev) => (
+      prev
+        ? { ...prev, alertCount: prev.alertCount + count }
+        : prev
+    ))
   }, [])
 
   const loadIntegratedData = useCallback(async () => {
@@ -451,6 +546,13 @@ export default function App() {
     [activeBackendChild?.childId, youtubeCategorySettingsByChildId],
   )
 
+  const monitorGuidanceSettings = useMemo(
+    () => activeBackendChild?.childId != null
+      ? monitorGuidanceSettingsByChildId[activeBackendChild.childId] ?? buildDefaultMonitorGuidanceSettings()
+      : buildDefaultMonitorGuidanceSettings(),
+    [activeBackendChild?.childId, monitorGuidanceSettingsByChildId],
+  )
+
   useEffect(() => {
     if (!activeBackendChild?.childId) {
       return
@@ -478,6 +580,10 @@ export default function App() {
   useEffect(() => {
     persistYoutubeCategorySettings(youtubeCategorySettingsByChildId)
   }, [youtubeCategorySettingsByChildId])
+
+  useEffect(() => {
+    persistMonitorGuidanceSettings(monitorGuidanceSettingsByChildId)
+  }, [monitorGuidanceSettingsByChildId])
 
   const activeChildAlerts = useMemo(
     () => recentAlerts.filter((alert) => alert.childId === activeBackendChild?.childId),
@@ -730,11 +836,61 @@ export default function App() {
     }
   }, [children])
 
-  const addProfile = useCallback((newProfile: ChildProfile) => {
-    setProfiles((prev) => [...prev, newProfile])
-    setActiveProfileId(newProfile.id)
-    setProfileMode('kids')
-  }, [])
+  const addProfile = useCallback(async (
+    newProfile: ChildProfile,
+    options?: {
+      useCam?: boolean | null
+    },
+  ) => {
+    try {
+      const createdChild = await createChildProfile({
+        familyId: FAMILY_ID,
+        childName: newProfile.name,
+        birthYear: deriveBirthYearFromAge(newProfile.age),
+        dailyLimitMinutes: newProfile.timeLimit,
+      })
+
+      setMonitorGuidanceSettingsByChildId((prev) => ({
+        ...prev,
+        [createdChild.childId]: options?.useCam === false
+          ? { posture: false, blink: false, distance: false }
+          : buildDefaultMonitorGuidanceSettings(),
+      }))
+
+      await loadIntegratedData()
+
+      const newProfileId = profileIdFromChildId(createdChild.childId)
+      // loadIntegratedData가 백엔드 데이터로 프로필을 재구성할 때
+      // 새 아이가 즉시 포함되지 않을 수 있으므로 upsert로 보장합니다
+      setProfiles((prev) => {
+        const exists = prev.some((p) => p.id === newProfileId)
+        const finalProfile: ChildProfile = {
+          id: newProfileId,
+          name: newProfile.name,
+          age: newProfile.age,
+          color: newProfile.color,
+          bgGradient: newProfile.bgGradient,
+          timeLimit: newProfile.timeLimit,
+          interests: newProfile.interests,
+        }
+        if (exists) {
+          return prev.map((p) =>
+            p.id === newProfileId
+              ? { ...p, color: newProfile.color, bgGradient: newProfile.bgGradient, interests: newProfile.interests }
+              : p
+          )
+        }
+        return [...prev, finalProfile]
+      })
+
+      setActiveProfileId(newProfileId)
+      setProfileMode('kids')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '새 자녀 프로필 생성에 실패했어요.'
+      setServerError(message)
+      throw error
+    }
+  }, [loadIntegratedData])
 
   const handleAnalyzeYoutube = useCallback(async (videoId: string) => {
     if (!activeBackendChild?.childId) {
@@ -743,6 +899,7 @@ export default function App() {
     }
 
     setAnalysisPending(true)
+    const baselineViewingCount = familyOverview?.todayViewingCount ?? 0
 
     try {
       if (!runtimeSettings?.privacyConsent || !runtimeSettings?.addictionMonitorEnabled) {
@@ -798,10 +955,16 @@ export default function App() {
       setAnalysisHistory((prev) => [syncedResult, ...prev].slice(0, 8))
 
       if (syncedResult.playback.allowed) {
+        incrementViewingCount(
+          `analysis:${syncedResult.analysisId ?? videoId}:${activeBackendChild.childId}`,
+          'ensure',
+          baselineViewingCount,
+        )
         const monitor = await startAddictionMonitor(
           videoId,
           activeBackendChild.childId,
           syncedResult.analysisId ?? null,
+          monitorGuidanceSettings,
         )
         setActiveMonitor(monitor)
       } else {
@@ -813,7 +976,7 @@ export default function App() {
     } finally {
       setAnalysisPending(false)
     }
-  }, [activeBackendChild, loadIntegratedData, runtimeSettings])
+  }, [activeBackendChild, familyOverview?.todayViewingCount, incrementViewingCount, loadIntegratedData, monitorGuidanceSettings, runtimeSettings])
 
   const handleStopAddictionMonitor = useCallback(async () => {
     if (!activeBackendChild?.childId && !activeMonitor?.sessionId) {
@@ -884,6 +1047,19 @@ export default function App() {
         setServerError(message)
       })
   }, [activeBackendChild?.childId, youtubeCategorySettingsByChildId])
+
+  const handleMonitorGuidanceSettingsChange = useCallback((
+    childId: number,
+    patch: Partial<MonitorGuidanceSettings>,
+  ) => {
+    setMonitorGuidanceSettingsByChildId((prev) => ({
+      ...prev,
+      [childId]: normalizeMonitorGuidanceSettings({
+        ...(prev[childId] ?? buildDefaultMonitorGuidanceSettings()),
+        ...patch,
+      }),
+    }))
+  }, [])
 
   const activeKidsProfile = profiles.find((profile) => profile.id === activeProfileId)
   const kidsTheme = activeKidsProfile ? getThemeByAge(activeKidsProfile.age) : null
@@ -1021,8 +1197,11 @@ export default function App() {
       nextToasts.forEach((toast) => {
         countedToastMetricKeysRef.current.add(toast.sourceKey)
       })
+      incrementAlertCount(
+        nextToasts.filter((toast) => !toast.sourceKey.startsWith('server-error:')).length,
+      )
     }
-  }, [activeToastSourceKeys, latestAnalysis, lowBlinkGuidance, recentAlerts, serverError, youtubeCategorySettings])
+  }, [activeToastSourceKeys, incrementAlertCount, latestAnalysis, lowBlinkGuidance, recentAlerts, serverError, youtubeCategorySettings])
 
   return (
     <div data-profile-mode={profileMode} style={themeVars} className="app-root">
@@ -1083,14 +1262,7 @@ export default function App() {
           )}
           <div className="kids-care-popup">
             <div className="kids-care-popup__bear" aria-hidden="true">
-              <span className="kids-care-popup__leaf" />
-              <span className="kids-care-popup__ear kids-care-popup__ear--left" />
-              <span className="kids-care-popup__ear kids-care-popup__ear--right" />
-              <span className="kids-care-popup__face">
-                <span className="kids-care-popup__eye kids-care-popup__eye--left" />
-                <span className="kids-care-popup__eye kids-care-popup__eye--right" />
-                <span className="kids-care-popup__nose" />
-              </span>
+              <BearIcon size={88} />
             </div>
             <div className="kids-care-popup__bubble">
               <strong>{kidsCarePopup.title}</strong>
@@ -1241,11 +1413,15 @@ export default function App() {
             }
 
             if (action.kind === 'open-url') {
+              incrementViewingCount(`pin-open-url:${action.url}`)
               window.open(action.url, '_blank', 'noopener,noreferrer')
               navigate('main')
               return
             }
 
+            if (action.screen === 'tv-live') {
+              incrementViewingCount(`pin-screen:${action.screen}`)
+            }
             navigate(action.screen)
           }}
           onCancel={() => {
@@ -1269,6 +1445,8 @@ export default function App() {
           activeProfileId={activeProfileId}
           onUpdateTimeLimit={updateTimeLimit}
           onUpdateWatchPolicy={handleWatchPolicyChange}
+          monitorGuidanceSettings={monitorGuidanceSettings}
+          onUpdateMonitorGuidanceSettings={handleMonitorGuidanceSettingsChange}
           initialSection={settingsInitialSection}
           familyName={familyName}
           childSummaries={children}

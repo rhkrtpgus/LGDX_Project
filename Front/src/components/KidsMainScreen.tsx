@@ -52,6 +52,59 @@ function buildFallbackCatalogItems() {
   }))
 }
 
+function mergeUniqueYoutubeItems(...collections: YoutubeVideoCatalogItem[][]) {
+  const dedupedItems = new Map<string, YoutubeVideoCatalogItem>()
+
+  for (const collection of collections) {
+    for (const item of collection) {
+      if (!dedupedItems.has(item.videoId)) {
+        dedupedItems.set(item.videoId, item)
+      }
+    }
+  }
+
+  return Array.from(dedupedItems.values())
+}
+
+function diversifyYoutubeItems(items: YoutubeVideoCatalogItem[], limit = 10) {
+  const results: YoutubeVideoCatalogItem[] = []
+  const seenVideoIds = new Set<string>()
+  const seenChannels = new Set<string>()
+  const seenTitleTokens = new Set<string>()
+
+  for (const item of items) {
+    if (seenVideoIds.has(item.videoId)) {
+      continue
+    }
+
+    const normalizedChannel = (item.channelTitle ?? "").toLowerCase().trim()
+    const normalizedTitle = (item.title ?? "").toLowerCase().trim()
+    const titleKey = normalizedTitle.split(/\s+/).filter(Boolean).slice(0, 3).join(" ")
+
+    const sameChannelPenalty = normalizedChannel && seenChannels.has(normalizedChannel)
+    const sameTitlePenalty = titleKey && seenTitleTokens.has(titleKey)
+
+    if (sameChannelPenalty && sameTitlePenalty) {
+      continue
+    }
+
+    seenVideoIds.add(item.videoId)
+    if (normalizedChannel) {
+      seenChannels.add(normalizedChannel)
+    }
+    if (titleKey) {
+      seenTitleTokens.add(titleKey)
+    }
+
+    results.push(item)
+    if (results.length >= limit) {
+      break
+    }
+  }
+
+  return results
+}
+
 const YOUTUBE_PAGE_LABELS: Record<YoutubeCategoryId, string> = {
   film_animation: '애니',
   autos_vehicles: '탈것',
@@ -145,7 +198,7 @@ export function KidsMainScreen({
   const [selectedPlaybackItem, setSelectedPlaybackItem] = useState<YoutubeVideoCatalogItem | null>(null)
   const [dismissedVideoIds, setDismissedVideoIds] = useState<string[]>([])
   const [activeYoutubeCategoryId, setActiveYoutubeCategoryId] = useState<YoutubeCategoryId | 'all'>('all')
-  const [youtubeSearchQuery, setYoutubeSearchQuery] = useState('공룡')
+  const [youtubeSearchQuery, setYoutubeSearchQuery] = useState('')
   const [youtubeExamples, setYoutubeExamples] = useState<YoutubeVideoCatalogItem[]>(buildFallbackCatalogItems)
   const [youtubeSearchResults, setYoutubeSearchResults] = useState<YoutubeVideoCatalogItem[]>([])
   const [youtubeRelatedResults, setYoutubeRelatedResults] = useState<YoutubeVideoCatalogItem[]>([])
@@ -155,6 +208,7 @@ export function KidsMainScreen({
   const [youtubeRelatedError, setYoutubeRelatedError] = useState<string | null>(null)
   const [lastManualSearchQuery, setLastManualSearchQuery] = useState('')
   const playerSectionRef = useRef<HTMLDivElement | null>(null)
+  const RECOMMENDATION_TARGET_COUNT = 24
 
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0]
   const theme = getThemeByAge(activeProfile.age)
@@ -248,13 +302,10 @@ export function KidsMainScreen({
   const recommendationPageQuery = recommendationPages.find((page) => page.id === activeYoutubeCategoryId)?.querySeed ?? ''
   const youtubeCategoryQuery = recommendationPageQuery || selectedYoutubeCategory?.aliases?.[0] || selectedYoutubeCategory?.shortLabel || ''
   const effectiveSuggestionQuery = [activeSuggestionQuery, youtubeCategoryQuery].filter(Boolean).join(' ')
-  const displayedRecommendationItems = useMemo(
-    () => (youtubeSearchResults.length > 0 ? youtubeSearchResults : youtubeExamples),
-    [youtubeExamples, youtubeSearchResults],
-  )
+  const recommendationQuery = lastManualSearchQuery || effectiveSuggestionQuery
   const recommendationHeadline = youtubeSearchResults.length > 0 && lastManualSearchQuery
     ? `검색 결과 추천 · ${lastManualSearchQuery}`
-    : effectiveSuggestionQuery
+    : recommendationQuery
   const dbWatchedVideoIds = useMemo(() => new Set([
     ...viewingHistory.map((item) => item.videoId),
     ...analysisHistory.map((item) => item.videoId ?? ''),
@@ -265,17 +316,12 @@ export function KidsMainScreen({
     ...dbWatchedVideoIds,
   ].filter(Boolean)), [dbWatchedVideoIds, dismissedVideoIds, playbackVideoId])
   const mergedRecommendationItems = useMemo(() => {
-    const mergedItems = [...youtubeSearchResults, ...displayedRecommendationItems]
-    const dedupedItems = new Map<string, YoutubeVideoCatalogItem>()
+    const mergedItems = lastManualSearchQuery
+      ? mergeUniqueYoutubeItems(youtubeSearchResults, youtubeExamples, youtubeRelatedResults, localFallbackExamples)
+      : mergeUniqueYoutubeItems(youtubeExamples, youtubeRelatedResults, localFallbackExamples)
 
-    for (const item of mergedItems) {
-      if (!dedupedItems.has(item.videoId)) {
-        dedupedItems.set(item.videoId, item)
-      }
-    }
-
-    return Array.from(dedupedItems.values())
-  }, [displayedRecommendationItems, youtubeSearchResults])
+    return diversifyYoutubeItems(mergedItems, RECOMMENDATION_TARGET_COUNT)
+  }, [lastManualSearchQuery, localFallbackExamples, youtubeExamples, youtubeRelatedResults, youtubeSearchResults, RECOMMENDATION_TARGET_COUNT])
   const derivedPlaybackItem = useMemo(() => {
     const sources = [
       ...youtubeExamples,
@@ -469,18 +515,15 @@ export function KidsMainScreen({
       return
     }
 
+    // selectedYoutubeId가 유효한 quickPick과 맞지 않을 때만 두 값을 같이 동기화
+    // (카테고리 변경 등으로 quickPicks 목록이 바뀐 경우)
+    // submittedVideoId를 deps에서 제외해 카드 클릭 시 덮어쓰지 않도록 함
     if (current.id !== selectedYoutubeId) {
       setSelectedYoutubeId(current.id)
-    }
-
-    if (submittedVideoId !== current.videoId) {
       setSubmittedVideoId(current.videoId)
     }
-  }, [quickPicks, selectedYoutubeId, submittedVideoId])
-
-  useEffect(() => {
-    setYoutubeSearchQuery(effectiveSuggestionQuery)
-  }, [effectiveSuggestionQuery])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickPicks, selectedYoutubeId])
 
   useEffect(() => {
     if (!playbackVideoId) {
@@ -495,7 +538,7 @@ export function KidsMainScreen({
     setYoutubeSearchPending(true)
     setYoutubeSearchError(null)
 
-    void searchYoutubeVideos(effectiveSuggestionQuery, 10)
+    void searchYoutubeVideos(recommendationQuery, 10)
       .then((response) => {
         if (cancelled) {
           return
@@ -518,7 +561,7 @@ export function KidsMainScreen({
     return () => {
       cancelled = true
     }
-  }, [effectiveSuggestionQuery, localFallbackExamples])
+  }, [localFallbackExamples, recommendationQuery])
 
   function handleYoutubeSearchSubmit() {
     const trimmed = youtubeSearchQuery.trim()
@@ -554,7 +597,6 @@ export function KidsMainScreen({
         ? previous
         : [...previous, item.videoId]
     ))
-    setSelectedYoutubeId('')
     void onAnalyzeYoutube(item.videoId)
   }
 
@@ -776,7 +818,7 @@ export function KidsMainScreen({
               </span>
             </div>
 
-            <div className={`kcc-grid${isBaby && !sharedMode ? ' kcc-grid--baby' : ' kcc-grid--row'}`}>
+            <div className="kcc-grid kcc-grid--row">
               {contents.map((item) => (
                 <KidsContentCard
                   key={item.id}
@@ -1146,6 +1188,20 @@ export function KidsMainScreen({
                   <span className="wap-name">{profile.name}</span>
                 </button>
               ))}
+
+              <button
+                type="button"
+                className="wap-account-row wap-account-row--btn wap-account-row--add"
+                onClick={() => { setPanelOpen(false); onNavigate('profile-select') }}
+              >
+                <div className="wap-avatar wap-avatar--add">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" width={20} height={20}>
+                    <line x1={12} y1={5} x2={12} y2={19} />
+                    <line x1={5} y1={12} x2={19} y2={12} />
+                  </svg>
+                </div>
+                <span className="wap-name">프로필 추가</span>
+              </button>
             </motion.aside>
           </>
         )}

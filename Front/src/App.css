@@ -199,52 +199,48 @@
   bottom: clamp(18px, 2.6vh, 28px);
   z-index: 2;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0;
-  width: min(420px, calc(100vw - 36px));
+  width: min(380px, calc(100vw - 36px));
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 28px;
+  border: 2px solid rgba(51, 57, 74, 0.08);
+  box-shadow: 0 16px 36px rgba(13, 20, 34, 0.22);
+  padding: 14px 20px 14px 10px;
+  overflow: hidden;
 }
 
 .kids-care-popup__bubble {
-  position: relative;
   flex: 1;
-  min-height: 176px;
-  margin-left: -18px;
-  padding: 34px 30px 28px 132px;
-  border-radius: 36px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 2px solid rgba(51, 57, 74, 0.08);
-  box-shadow: 0 22px 38px rgba(13, 20, 34, 0.22);
+  padding: 0 0 0 10px;
 }
 
 .kids-care-popup__bubble strong {
   display: block;
-  color: #4b4f5a;
-  font-size: 21px;
-  font-weight: 900;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
+  color: #3a3d4a;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
 }
 
 .kids-care-popup__bubble p {
-  margin: 8px 0 0;
-  color: #4b4f5a;
-  font-size: 21px;
-  font-weight: 900;
-  line-height: 1.28;
-  letter-spacing: -0.03em;
+  margin: 5px 0 0;
+  color: #5a5e6e;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
   white-space: pre-line;
 }
 
 .kids-care-popup__bear {
-  position: relative;
-  z-index: 3;
-  width: 118px;
-  height: 118px;
-  margin-bottom: -8px;
-  border-radius: 999px 999px 42px 42px;
-  background: linear-gradient(180deg, #ffd84d, #f4b31f);
-  box-shadow: 0 18px 30px rgba(244, 179, 31, 0.26);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
 }
 
 .kids-care-popup__ear {
@@ -2950,10 +2946,13 @@
   display: flex;
   flex-direction: row;
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
   color: #fff;
 }
+.wos-screen::-webkit-scrollbar { display: none; }
 
 /* ── 사이드바 ── */
 .wos-sidenav {
@@ -3152,20 +3151,23 @@
 .wos-cat-row {
   display: flex;
   gap: clamp(8px, 0.9vw, 10px);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .wos-cat-chip {
-  min-height: clamp(64px, 9vh, 76px);
-  padding: clamp(18px, 2.5vh, 24px) clamp(18px, 2vw, 28px);
+  min-height: clamp(48px, 6.5vh, 58px);
+  padding: clamp(12px, 1.6vh, 16px) clamp(10px, 1.4vw, 24px);
   border: none;
   border-radius: 12px;
   font-family: inherit;
-  font-size: clamp(15px, 1vw, 17px);
+  font-size: clamp(12px, 0.9vw, 15px);
   font-weight: 700;
   color: #fff;
   cursor: pointer;
-  flex: 1;
-  min-width: 120px;
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: opacity 0.15s, transform 0.15s;
 }
 .wos-cat-chip:hover { opacity: 0.85; transform: translateY(-2px); }
@@ -3178,18 +3180,20 @@
   min-width: 0;
 }
 .wos-app-icon {
-  width: clamp(70px, 5.2vw, 84px);
+  width: clamp(56px, 4vw, 68px);
   flex-shrink: 0;
   transition: transform 0.15s;
 }
 .wos-app-icon:hover { transform: scale(1.06); }
 .wos-app-icon img {
   width: 100%;
-  height: clamp(70px, 5.2vw, 84px);
+  height: clamp(56px, 4vw, 68px);
   object-fit: contain;
-  background: #0a0a0f;
-  padding: 6px;
-  border-radius: 18px;
+  object-position: center center;
+  background: transparent;
+  padding: 0;
+  border-radius: 22px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
   display: block;
 }
 
@@ -3213,7 +3217,7 @@
 
 .wos-app-caption {
   display: block;
-  max-width: clamp(70px, 5.2vw, 84px);
+  max-width: clamp(76px, 5.5vw, 90px);
   text-align: center;
   font-size: clamp(10px, 0.72vw, 11px);
   font-weight: 700;
@@ -3224,11 +3228,13 @@
 
 /* 콘텐츠 그리드 */
 .wos-content-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
   gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.wos-content-card { display: flex; flex-direction: column; gap: 6px; }
+.wos-content-grid::-webkit-scrollbar { display: none; }
+.wos-content-card { display: flex; flex-direction: column; gap: 6px; flex: 1 0 200px; }
 .wos-content-label {
   font-size: 13px;
   font-weight: 600;
@@ -7023,9 +7029,14 @@
 
 /* Integrated backend/model panels */
 .wos-server-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
   gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.wos-server-strip::-webkit-scrollbar { display: none; }
+.wos-server-card {
+  flex: 1 0 220px;
 }
 
 .wos-server-card,
@@ -7042,7 +7053,6 @@
 
 .wos-server-card {
   padding: 18px 20px;
-  min-width: 0;
 }
 
 .wos-server-kicker,
@@ -7195,7 +7205,7 @@
 
 .kids-youtube-thumb-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
 }
@@ -7433,6 +7443,15 @@
   cursor: pointer;
   background: #28314f;
   color: #fff;
+}
+
+.kids-analysis-open--locked {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  cursor: default;
+  background: rgba(40, 49, 79, 0.92);
 }
 
 .kids-analysis-stop {
@@ -8571,7 +8590,6 @@
 }
 
 @media (max-width: 1100px) {
-  .wos-server-strip,
   .kids-server-board,
   .kids-analysis-shell {
     grid-template-columns: 1fr;
@@ -8628,14 +8646,6 @@
   .wos-main {
     overflow-y: auto;
     padding-right: 18px;
-  }
-
-  .wos-content-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .wos-server-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .msl-root {
@@ -8698,11 +8708,6 @@
     height: clamp(190px, 28vh, 250px);
   }
 
-  .wos-cat-chip {
-    flex: 1 1 calc(50% - 8px);
-    min-width: 180px;
-  }
-
   .wos-app-row {
     overflow-x: auto;
     padding-bottom: 4px;
@@ -8711,10 +8716,6 @@
 
   .wos-app-row::-webkit-scrollbar {
     display: none;
-  }
-
-  .wos-content-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .wos-account-panel {
@@ -8771,18 +8772,9 @@
     min-width: 0;
   }
 
-  .wos-content-grid,
   .kids-youtube-grid,
   .thinq-filter-grid,
   .vhp-summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .wos-cat-chip {
-    min-width: calc(50% - 8px);
-  }
-
-  .wos-server-strip {
     grid-template-columns: 1fr;
   }
 

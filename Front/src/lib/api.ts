@@ -136,6 +136,12 @@ export interface YoutubeVideoCatalogItem {
   publishedAt: string | null
 }
 
+export interface MonitorGuidanceSettings {
+  posture: boolean
+  blink: boolean
+  distance: boolean
+}
+
 export interface RuntimeSettingsResponse {
   privacyConsent: boolean
   addictionMonitorEnabled: boolean
@@ -176,6 +182,13 @@ export interface ParentChildResponse {
   todayWatchMinutes: number
   viewingAllowedNow: boolean
   watchPolicy: ChildWatchPolicyResponse
+}
+
+export interface ChildCreateRequest {
+  familyId: number
+  childName: string
+  birthYear: number
+  dailyLimitMinutes: number
 }
 
 export interface ParentAlertResponse {
@@ -333,6 +346,13 @@ export function getParentOverview(familyId: number) {
   return requestJson<ParentOverviewResponse>(`/api/parent/overview?familyId=${familyId}`)
 }
 
+export function createChildProfile(payload: ChildCreateRequest) {
+  return requestJson<ParentChildResponse>('/api/parent/children', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
 export function getViewingHistory(familyId: number, childId?: number, limit = 8) {
   const params = new URLSearchParams({
     familyId: String(familyId),
@@ -475,13 +495,21 @@ export function recordPlaybackFromAnalysis(payload: {
   })
 }
 
-export function startAddictionMonitor(videoId: string, childId: number, analysisId?: number | null) {
+export function startAddictionMonitor(
+  videoId: string,
+  childId: number,
+  analysisId?: number | null,
+  guidanceSettings?: MonitorGuidanceSettings | null,
+) {
   return requestFastapiJson<MonitorControlResponse>('/fastapi/monitor/start', {
     method: 'POST',
     body: {
       videoId,
       childId,
       analysisId: analysisId ?? null,
+      blinkGuidanceEnabled: guidanceSettings?.blink ?? true,
+      postureGuidanceEnabled: guidanceSettings?.posture ?? true,
+      distanceGuidanceEnabled: guidanceSettings?.distance ?? true,
     },
   })
 }

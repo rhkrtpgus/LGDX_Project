@@ -9,7 +9,7 @@ type Step = 'name' | 'age' | 'time' | 'interests' | 'cam' | 'build'
 
 type Props = {
   onNavigate: (screen: ScreenId) => void
-  onAddProfile: (profile: ChildProfile) => void
+  onAddProfile: (profile: ChildProfile, options?: { useCam?: boolean | null }) => Promise<void> | void
 }
 
 const COLORS = ['#FFB3D1','#90C8F0','#B5E8A0','#FFD580','#C9A0F5','#80D8D8','#F5A0A0','#A0C0F5']
@@ -101,7 +101,7 @@ export function ProfileCreateFormScreen({ onNavigate, onAddProfile }: Props) {
         if (i === BUILD_MSGS.length - 1) {
           setTimeout(() => {
             setBuildDone(true)
-            setTimeout(() => {
+            setTimeout(async () => {
               const np: ChildProfile = {
                 id: `profile-${Date.now()}`,
                 name, age, color,
@@ -109,15 +109,20 @@ export function ProfileCreateFormScreen({ onNavigate, onAddProfile }: Props) {
                 timeLimit,
                 interests: Array.from(interests),
               }
-              onAddProfile(np)
-              onNavigate('kids-main')
+              try {
+                await onAddProfile(np, { useCam })
+                onNavigate(useCam ? 'cam-before' : 'kids-main')
+              } catch (error) {
+                setBuildDone(false)
+                console.error(error)
+              }
             }, 900)
           }, 400)
         }
       }, i * 950))
     })
     return () => timers.forEach(clearTimeout)
-  }, [step])
+  }, [age, color, interests, name, onAddProfile, onNavigate, outfit.bgColor, step, timeLimit, useCam])
 
   function go(next: Step) { setDir(1); setStep(next) }
   function back(prev: Step) { setDir(-1); setStep(prev) }
@@ -394,10 +399,7 @@ export function ProfileCreateFormScreen({ onNavigate, onAddProfile }: Props) {
 
               <button type="button" className="pcf2-btn" style={{ background: theme.accent }}
                 disabled={useCam === null}
-                onClick={() => {
-                  if (useCam) onNavigate('cam-before')
-                  else go('build')
-                }}>
+                onClick={() => go('build')}>
                 {useCam === null ? '선택해 주세요' : useCam ? '스마트캠 연결하기 →' : '프로필 완성하기 →'}
               </button>
             </>

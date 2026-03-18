@@ -2,6 +2,7 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.ChildWatchPolicyRequest;
 import com.example.demo.dto.ChildWatchPolicyResponse;
+import com.example.demo.dto.ChildCreateRequest;
 import com.example.demo.dto.FamilySelectionPreferenceRequest;
 import com.example.demo.dto.FamilySelectionPreferenceResponse;
 import com.example.demo.dto.ParentAlertResponse;
@@ -53,6 +54,15 @@ public class ParentControlController {
 	@GetMapping("/children")
 	public List<ParentChildResponse> getChildren(@RequestParam(defaultValue = "1") int familyId) {
 		return parentControlService.getChildren(familyId);
+	}
+
+	@PostMapping("/children")
+	public ParentChildResponse createChild(@RequestBody ChildCreateRequest request) {
+		try {
+			return parentControlService.createChild(request);
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(BAD_REQUEST, exception.getMessage(), exception);
+		}
 	}
 
 	@GetMapping("/selection")

@@ -365,7 +365,6 @@ export function MainScreen({
                 }}
               >
                 <img src={app.image} alt={app.sub} />
-                <span className="wos-app-caption">{app.sub}</span>
               </button>
             ) : (
               <a
@@ -382,7 +381,6 @@ export function MainScreen({
                 aria-label={`${app.sub} 열기`}
               >
                 <img src={app.image} alt={app.sub} />
-                <span className="wos-app-caption">{app.sub}</span>
               </a>
             )
           ))}
@@ -391,7 +389,6 @@ export function MainScreen({
         <div className="wos-content-grid">
           {historyCards.map((item) => (
             <div key={`${item.file}-${item.label}`} className="wos-content-card">
-              <p className="wos-content-label">{item.label}</p>
               <img className="wos-content-thumb" src={`/img/${item.file}`} alt={item.label} />
             </div>
           ))}
@@ -448,7 +445,7 @@ export function MainScreen({
               <button
                 type="button"
                 className="wap-account-row wap-account-row--btn wap-account-row--kids-group"
-                onClick={() => handleKidsSelect(activeProfileId || profiles[0].id)}
+                onClick={() => { closeAll(); onNavigate('profile-select') }}
               >
                 <div className="wap-kids-avatars">
                   {profiles.slice(0, 2).map((profile, index) => (

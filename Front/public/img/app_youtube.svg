@@ -1,6 +1,16 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="84" fill="#FFFFFF"/>
-  <rect x="76" y="186" width="140" height="100" rx="24" fill="#FF0000"/>
-  <path d="M134 211L179 236L134 261V211Z" fill="#FFFFFF"/>
-  <text x="276" y="258" fill="#202124" font-size="82" font-weight="700" font-family="Arial, Helvetica, sans-serif" letter-spacing="-3">YouTube</text>
+  <rect width="512" height="512" rx="84" fill="#F8F8FA"/>
+  <rect x="72" y="176" width="132" height="96" rx="24" fill="#FF0000"/>
+  <path d="M126 200L171 224L126 248V200Z" fill="#FFFFFF"/>
+  <text
+    x="232"
+    y="239"
+    fill="#202124"
+    font-size="70"
+    font-weight="700"
+    font-family="Arial Black, Arial, Helvetica, sans-serif"
+    letter-spacing="-2"
+  >
+    YouTube
+  </text>
 </svg>

@@ -7,6 +7,7 @@ import com.example.demo.domain.ChildWatchPolicyRecord;
 import com.example.demo.domain.ViewingHistoryWriteRecord;
 import com.example.demo.dto.ChildWatchPolicyRequest;
 import com.example.demo.dto.ChildWatchPolicyResponse;
+import com.example.demo.dto.ChildCreateRequest;
 import com.example.demo.dto.MobileReportResponse;
 import com.example.demo.dto.ParentAlertResponse;
 import com.example.demo.dto.ParentChildResponse;
@@ -70,6 +71,48 @@ public class ParentControlService {
 		return parentControlMapper.findChildrenByFamilyId(familyId).stream()
 			.map(this::toChildResponse)
 			.toList();
+	}
+
+	public ParentChildResponse createChild(ChildCreateRequest request) {
+		if (request.familyId() == null) {
+			throw new IllegalArgumentException("familyId는 필수입니다.");
+		}
+		if (!StringUtils.hasText(request.childName())) {
+			throw new IllegalArgumentException("childName은 필수입니다.");
+		}
+		if (request.birthYear() == null || request.birthYear() < 2000 || request.birthYear() > LocalDateTime.now().getYear()) {
+			throw new IllegalArgumentException("birthYear 값이 올바르지 않습니다.");
+		}
+
+		String familyName = parentControlMapper.findFamilyNameById(request.familyId());
+		if (!StringUtils.hasText(familyName)) {
+			throw new IllegalArgumentException("가족 정보를 찾을 수 없습니다.");
+		}
+
+		int childId = defaultInt(parentControlMapper.nextChildId());
+		parentControlMapper.insertChild(
+			childId,
+			request.familyId(),
+			request.childName().trim(),
+			request.birthYear()
+		);
+
+		ChildWatchPolicyRecord policy = resolvePolicy(childId);
+		if (request.dailyLimitMinutes() != null && request.dailyLimitMinutes() > 0) {
+			policy.setDailyLimitMinutes(request.dailyLimitMinutes());
+			policy.setMondayLimitMinutes(request.dailyLimitMinutes());
+			policy.setTuesdayLimitMinutes(request.dailyLimitMinutes());
+			policy.setWednesdayLimitMinutes(request.dailyLimitMinutes());
+			policy.setThursdayLimitMinutes(request.dailyLimitMinutes());
+			policy.setFridayLimitMinutes(request.dailyLimitMinutes());
+			policy.setSaturdayLimitMinutes(Math.min(request.dailyLimitMinutes() + 20, 240));
+			policy.setSundayLimitMinutes(Math.min(request.dailyLimitMinutes() + 20, 240));
+			validatePolicy(policy);
+			parentControlMapper.upsertWatchPolicy(policy);
+		}
+
+		resolveYoutubeCategoryFilters(childId);
+		return toChildResponse(getRequiredChild(childId));
 	}
 
 	public ChildProfile getChildProfile(int childId) {

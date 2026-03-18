@@ -88,6 +88,9 @@ def start_monitor_route(payload: MonitorStartRequest) -> MonitorControlResponse:
             video_id=payload.video_id,
             child_id=payload.child_id,
             analysis_id=payload.analysis_id,
+            blink_guidance_enabled=payload.blink_guidance_enabled,
+            posture_guidance_enabled=payload.posture_guidance_enabled,
+            distance_guidance_enabled=payload.distance_guidance_enabled,
         )
     except MonitorRuntimeError as exc:
         raise HTTPException(

@@ -82,6 +82,25 @@
     order by child_id asc
   </select>
 
+  <select id="nextChildId" resultType="int">
+    select coalesce(max(child_id), 0) + 1
+    from children
+  </select>
+
+  <insert id="insertChild">
+    insert into children (
+      child_id,
+      user_id,
+      child_name,
+      birth_year
+    ) values (
+      #{childId},
+      #{familyId},
+      #{childName},
+      #{birthYear}
+    )
+  </insert>
+
   <select id="findWatchPolicyByChildId" resultMap="watchPolicyResultMap">
     select
       child_id as child_id,

@@ -66,7 +66,16 @@ def _watch_process(managed: ManagedMonitorProcess) -> None:
         _cleanup_process(managed.child_id, managed.session_id)
 
 
-def _build_command(*, video_id: str, child_id: int, analysis_id: int | None, session_id: str) -> list[str]:
+def _build_command(
+    *,
+    video_id: str,
+    child_id: int,
+    analysis_id: int | None,
+    session_id: str,
+    blink_guidance_enabled: bool,
+    posture_guidance_enabled: bool,
+    distance_guidance_enabled: bool,
+) -> list[str]:
     settings = get_settings()
     video_url = f"https://www.youtube.com/watch?v={video_id}"
     command = [
@@ -91,6 +100,15 @@ def _build_command(*, video_id: str, child_id: int, analysis_id: int | None, ses
 
     if settings.addiction_monitor_camera_index >= 0:
         command.extend(["--camera-index", str(settings.addiction_monitor_camera_index)])
+
+    if not blink_guidance_enabled:
+        command.append("--disable-blink-guidance")
+
+    if not posture_guidance_enabled:
+        command.append("--disable-posture-guidance")
+
+    if not distance_guidance_enabled:
+        command.append("--disable-distance-guidance")
 
     return command
 
@@ -127,7 +145,15 @@ def get_active_monitor(child_id: int | None = None) -> MonitorControlResponse:
     )
 
 
-def start_background_monitor(*, video_id: str, child_id: int, analysis_id: int | None) -> MonitorControlResponse:
+def start_background_monitor(
+    *,
+    video_id: str,
+    child_id: int,
+    analysis_id: int | None,
+    blink_guidance_enabled: bool = True,
+    posture_guidance_enabled: bool = True,
+    distance_guidance_enabled: bool = True,
+) -> MonitorControlResponse:
     if not ADDICTION_SCRIPT.exists():
         raise MonitorRuntimeError(f"addiction.py not found: {ADDICTION_SCRIPT}")
 
@@ -139,6 +165,9 @@ def start_background_monitor(*, video_id: str, child_id: int, analysis_id: int |
         child_id=child_id,
         analysis_id=analysis_id,
         session_id=session_id,
+        blink_guidance_enabled=blink_guidance_enabled,
+        posture_guidance_enabled=posture_guidance_enabled,
+        distance_guidance_enabled=distance_guidance_enabled,
     )
 
     try:
