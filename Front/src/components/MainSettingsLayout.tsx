@@ -19,6 +19,7 @@ import type {
 import { formatMinutes } from '../lib/integration'
 import { ProfileSettingsDetail } from './ProfileSettingsDetail'
 import { ViewingHistoryPanel } from './ViewingHistoryPanel'
+import { PinScreen } from './PinScreen'
 
 type NavId = 'network' | 'display' | 'family' | 'youtube' | 'history' | 'system' | 'smartcam'
 
@@ -81,6 +82,7 @@ export function MainSettingsLayout({
 }: Props) {
   const [activeNav, setActiveNav] = useState<NavId>(initialSection)
   const [familyDetailId, setFamilyDetailId] = useState<string | null>(null)
+  const [pendingDetailId, setPendingDetailId] = useState<string | null>(null)
 
   const selectedProfile = profiles.find((profile) => profile.id === familyDetailId)
   const selectedChildSummary = childSummaries.find((child) => `child-${child.childId}` === familyDetailId)
@@ -149,7 +151,7 @@ export function MainSettingsLayout({
                   profiles={profiles}
                   childSummaries={childSummaries}
                   activeProfileId={activeProfileId}
-                  onOpenDetail={setFamilyDetailId}
+                  onOpenDetail={(id) => setPendingDetailId(id)}
                   parentPin={parentPin}
                   onUpdateParentPin={onUpdateParentPin}
                 />
@@ -186,6 +188,22 @@ export function MainSettingsLayout({
           )}
         </AnimatePresence>
       </div>
+
+      {pendingDetailId !== null && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999 }}>
+          <PinScreen
+            expectedPin={parentPin}
+            title="자녀 프로필 설정"
+            subtitle="부모님의 PIN을 입력해야 설정을 변경할 수 있어요"
+            helperText="설정 > 가족 보호에서 부모 PIN을 바꿀 수 있어요"
+            onSuccess={() => {
+              setFamilyDetailId(pendingDetailId)
+              setPendingDetailId(null)
+            }}
+            onCancel={() => setPendingDetailId(null)}
+          />
+        </div>
+      )}
     </div>
   )
 }

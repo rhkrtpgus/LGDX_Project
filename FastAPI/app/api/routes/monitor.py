@@ -62,6 +62,7 @@ def get_live_monitor_route(
         sessionId=session_id,
         capturedAt=telemetry.get("captured_at"),
         blinkBpm=blink.get("bpm"),
+        blinkTotal=blink.get("count_total"),
         screenDistanceCm=distance.get("screen_distance_cm"),
         frontFacing=head_pose.get("is_front"),
         poseStatus=pose.get("status"),

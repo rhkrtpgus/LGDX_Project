@@ -16,6 +16,7 @@ class MonitorLiveResponse(BaseModel):
     session_id: str | None = Field(default=None, alias="sessionId")
     captured_at: str | None = Field(default=None, alias="capturedAt")
     blink_bpm: float | None = Field(default=None, alias="blinkBpm")
+    blink_total: int | None = Field(default=None, alias="blinkTotal")
     screen_distance_cm: float | None = Field(default=None, alias="screenDistanceCm")
     front_facing: bool | None = Field(default=None, alias="frontFacing")
     pose_status: str | None = Field(default=None, alias="poseStatus")

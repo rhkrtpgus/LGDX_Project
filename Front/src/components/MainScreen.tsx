@@ -60,7 +60,7 @@ export function MainScreen({
   onRequestProtectedUrl,
   onRequestProtectedTv,
   profiles,
-  activeProfileId,
+  activeProfileId: _activeProfileId,
   onSelectKidsProfile,
   familyName,
   todayViewingCount,

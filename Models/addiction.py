@@ -46,7 +46,7 @@ CONFIG = {
     "warn_watch_time_3": 90 * 60,
 
     # ë ê¹ë°ì(EAR ê¸°ë°)
-    "ear_threshold": 0.22,
+    "ear_threshold": 0.27,
     "blink_cooldown": 0.25,
     "normal_bpm_min": 10,
     "normal_bpm_max": 20,
@@ -71,6 +71,11 @@ CONFIG = {
     "distance_max_ratio_to_wall": 0.72,
     "auto_wall_buffer_cm": 35.0,
     "auto_wall_min_sample_cm": 80.0,
+
+    # 적응형 기준 거리 (평균 기반 알람)
+    "distance_baseline_min_samples": 25,   # 기준 확립에 필요한 최소 샘플 수 (~25초)
+    "distance_near_factor": 0.72,          # 기준의 72% 미만 → 너무 가까움 (28% 이상 가까워짐)
+    "distance_far_factor": 1.45,           # 기준의 145% 초과 → 너무 멀어짐 (45% 이상 멀어짐)
 
     # ì§ì¤ë ì ì ê°ì¤ì¹
     "focus_weight_head": 0.35,
@@ -150,7 +155,7 @@ def initialize_mediapipe():
     mp_pose = mp.solutions.pose
     mp_drawing = mp.solutions.drawing_utils
     face_mesh = mp_face_mesh.FaceMesh(
-        max_num_faces=1,
+        max_num_faces=4,
         refine_landmarks=True,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5
@@ -234,7 +239,8 @@ class KidsMonitorState:
         self.last_emotion_time = 0
         self.emotion_lock = threading.Lock()
 
-        # ?꾪뿕??        self.risk_score = 0
+        # ?꾪뿕??
+        self.risk_score = 0
         self.risk_level = "?뺤긽"
         self.content_risk_adjustment = 0.0
         self.content_risk_reasons = []
@@ -243,7 +249,8 @@ class KidsMonitorState:
         self.active_warnings = []
         self.warning_log = []
 
-        # YouTube 硫뷀??곗씠??        self.youtube_url = None
+        # YouTube 硫뷀??곗씠??
+        self.youtube_url = None
         self.youtube_video_id = None
         self.youtube_title = None
         self.youtube_category_en = None
@@ -287,6 +294,11 @@ class KidsMonitorState:
         self.recommended_distance_min_cm = CONFIG["safe_distance_min_cm"]
         self.recommended_distance_max_cm = CONFIG["safe_distance_max_cm"]
         self.distance_samples = deque(maxlen=180)
+
+        # 적응형 기준 거리 (평균 기반)
+        self.distance_baseline_cm = 0.0
+        self.distance_baseline_samples = deque(maxlen=120)  # 최근 2분치 샘플
+        self.distance_baseline_ready = False
 
         # 濡쒓렇
         self.log_data = []
@@ -354,8 +366,8 @@ def get_dynamic_blink_threshold(state: KidsMonitorState) -> tuple[float, float]:
         close_threshold = CONFIG["ear_threshold"]
     else:
         open_reference = float(np.percentile(recent_ears, 75))
-        close_threshold = min(CONFIG["ear_threshold"], open_reference * 0.78)
-        close_threshold = max(0.16, close_threshold)
+        close_threshold = min(CONFIG["ear_threshold"], open_reference * 0.85)
+        close_threshold = max(0.19, close_threshold)
 
     reopen_threshold = close_threshold + 0.035
     return close_threshold, reopen_threshold
@@ -474,6 +486,14 @@ def estimate_screen_distance(landmarks_raw, frame_w, frame_h):
 
 
 def get_recommended_distance_range(state: KidsMonitorState) -> tuple[float, float]:
+    # 적응형 베이스라인이 확립된 경우 개인 맞춤 범위를 우선 사용
+    if state.distance_baseline_ready and state.distance_baseline_cm > 0:
+        baseline = state.distance_baseline_cm
+        near_limit = round(baseline * CONFIG["distance_near_factor"], 1)
+        far_limit  = round(baseline * CONFIG["distance_far_factor"], 1)
+        return near_limit, far_limit
+
+    # 베이스라인 미확립 시 기존 벽 기반 / 고정 범위 사용 (fallback)
     base_min = float(CONFIG["safe_distance_min_cm"])
     base_max = float(CONFIG["safe_distance_max_cm"])
     wall_distance = state.back_wall_distance_cm
@@ -506,6 +526,12 @@ def update_distance_profile(state: KidsMonitorState, observed_distance_cm: float
         return
 
     state.distance_samples.append(observed_distance_cm)
+
+    # 적응형 베이스라인 갱신: 유효 샘플의 중앙값을 기준 거리로 사용
+    state.distance_baseline_samples.append(observed_distance_cm)
+    if len(state.distance_baseline_samples) >= CONFIG["distance_baseline_min_samples"]:
+        state.distance_baseline_cm = float(np.median(list(state.distance_baseline_samples)))
+        state.distance_baseline_ready = True
 
     if not state.back_wall_distance_manual:
         valid_samples = [
@@ -830,7 +856,7 @@ def _legacy_compute_risk_score(state: KidsMonitorState) -> tuple:
     if not state.head_is_front:
         yaw_e   = max(0, abs(state.head_yaw)   - CONFIG["head_yaw_threshold"])
         pitch_e = max(0, abs(state.head_pitch) - CONFIG["head_pitch_threshold"])
-        scores["head_pose"] = min(100, (yaw_e + pitch_e) * 2)
+        scores["head_pose"] = min(100, (yaw_e + pitch_e) * 5)
     else:
         scores["head_pose"] = 0
 
@@ -852,8 +878,8 @@ def _legacy_compute_risk_score(state: KidsMonitorState) -> tuple:
         scores["blink"]     * CONFIG["weight_blink"] +
         scores["pose"]      * CONFIG["weight_pose"] +
         scores["emotion"]   * CONFIG["weight_emotion"] +
-        scores.get("head_pose", 0) * 0.05 +     # 5% 異붽? 諛섏쁺
-        scores.get("distance",  0) * 0.05 +      # 5% 異붽? 諛섏쁺
+        scores.get("head_pose", 0) * 0.20 +     # 20% 異붽? 諛섏쁺 (고개 돌림 강화)
+        scores.get("distance",  0) * 0.15 +      # 15% 異붽? 諛섏쁺 (거리 이탈 강화)
         scores["content"]
     )
     total = min(100, max(0, total))
@@ -1129,7 +1155,7 @@ def compute_risk_score(state: KidsMonitorState) -> tuple:
     if not state.head_is_front:
         yaw_e = max(0, abs(state.head_yaw) - CONFIG["head_yaw_threshold"])
         pitch_e = max(0, abs(state.head_pitch) - CONFIG["head_pitch_threshold"])
-        scores["head_pose"] = min(100, (yaw_e + pitch_e) * 2)
+        scores["head_pose"] = min(100, (yaw_e + pitch_e) * 5)
     else:
         scores["head_pose"] = 0
 
@@ -1156,8 +1182,8 @@ def compute_risk_score(state: KidsMonitorState) -> tuple:
         scores["blink"] * CONFIG["weight_blink"] +
         scores["pose"] * CONFIG["weight_pose"] +
         scores["emotion"] * CONFIG["weight_emotion"] +
-        scores.get("head_pose", 0) * 0.05 +
-        scores.get("distance", 0) * 0.05 +
+        scores.get("head_pose", 0) * 0.20 +     # 20% 보너스 (고개 돌림 강화)
+        scores.get("distance", 0) * 0.15 +      # 15% 보너스 (거리 이탈 강화)
         scores["content"]
     )
     total = min(100, max(0, total))

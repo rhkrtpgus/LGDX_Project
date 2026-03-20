@@ -39,6 +39,15 @@ import {
   type ParentViewingHistoryResponse,
   type RuntimeSettingsResponse,
   type SystemHealthResponse,
+  type VoiceAlertGroup,
+  type VoiceAlertSettings,
+  type VoiceAlertType,
+  type VoiceRecordingMeta,
+  getVoiceAlertSettings,
+  getVoiceRecordingsByAlert,
+  getVoiceRecordings,
+  saveVoiceAlertSettings,
+  toggleVoiceRecordingEnabled,
 } from './lib/api'
 import {
   buildProfilesFromChildren,
@@ -76,8 +85,11 @@ export type ProfileMode = 'adult' | 'kids'
 const FAMILY_ID = 1
 const TOAST_DURATION_MS = 60_000
 const BLINK_WARNING_THRESHOLD_BPM = 10
-const BLINK_GUIDANCE_DURATION_MS = 30_000
-const BUBBLE_BURST_DURATION_MS = 1100
+const BLINK_GUIDANCE_DURATION_MS = 15_000
+const BUBBLE_POP_DURATION_MS = 620
+const BUBBLE_COUNT_MIN = 5
+const BUBBLE_COUNT_MAX = 7
+const CARE_POPUP_DISPLAY_MS = 15_000
 const PARENT_PIN_STORAGE_KEY = 'lgdx-parent-pin'
 const YOUTUBE_CATEGORY_STORAGE_KEY = 'lgdx-youtube-category-settings'
 const MONITOR_GUIDANCE_STORAGE_KEY = 'lgdx-monitor-guidance-settings'
@@ -94,7 +106,16 @@ type AlertToast = {
   durationMs?: number
 }
 
-type BlinkBubbleState = 'hidden' | 'rising' | 'bursting'
+type BubbleItem = {
+  id: number
+  left: number      // % position from left (5–93)
+  size: number      // px diameter
+  delay: number     // s animation delay
+  duration: number  // s rise duration
+  drift: number     // px horizontal drift during rise
+  rise: number      // px vertical travel
+  state: 'rising' | 'popping'
+}
 
 type KidsCarePopup = {
   trigger: string
@@ -132,6 +153,20 @@ function formatRemainingMinutesLabel(minutes: number): string {
   }
 
   return `${hours}시간 ${remain}분 남았어요`
+}
+
+function spawnBubbles(): BubbleItem[] {
+  const count = BUBBLE_COUNT_MIN + Math.floor(Math.random() * (BUBBLE_COUNT_MAX - BUBBLE_COUNT_MIN + 1))
+  return Array.from({ length: count }, (_, i) => ({
+    id: Date.now() + i,
+    left: 5 + Math.random() * 88,
+    size: 40 + Math.floor(Math.random() * 54),
+    delay: Math.random() * 1.2,
+    duration: 3.5 + Math.random() * 2.5,
+    drift: -45 + Math.floor(Math.random() * 90),
+    rise: 280 + Math.floor(Math.random() * 180),
+    state: 'rising' as const,
+  }))
 }
 
 function buildKidsCarePopup(
@@ -372,14 +407,29 @@ export default function App() {
   const [youtubeCategorySettingsByChildId, setYoutubeCategorySettingsByChildId] = useState<Record<number, YoutubeCategorySettings>>(loadStoredYoutubeCategorySettings)
   const [monitorGuidanceSettingsByChildId, setMonitorGuidanceSettingsByChildId] = useState<Record<number, MonitorGuidanceSettings>>(loadStoredMonitorGuidanceSettings)
   const [alertToasts, setAlertToasts] = useState<AlertToast[]>([])
-  const [blinkBubbleState, setBlinkBubbleState] = useState<BlinkBubbleState>('hidden')
+  const [activeBubbles, setActiveBubbles] = useState<BubbleItem[]>([])
+  const [carePopupVisible, setCarePopupVisible] = useState(false)
+  const [carePopupExiting, setCarePopupExiting] = useState(false)
+  const [voiceAlertSettings, setVoiceAlertSettings] = useState<VoiceAlertSettings>({
+    distanceEnabled: true,
+    blinkEnabled: true,
+    stretchEnabled: true,
+    distanceActiveSpeakerId: null,
+    blinkActiveSpeakerId: null,
+    stretchActiveSpeakerId: null,
+  })
+  const [voiceRecordings, setVoiceRecordings] = useState<VoiceRecordingMeta[]>([])
   const seenToastKeysRef = useRef<Set<string>>(new Set())
   const countedToastMetricKeysRef = useRef<Set<string>>(new Set())
   const countedViewingMetricKeysRef = useRef<Set<string>>(new Set())
-  const blinkBubbleTimerRef = useRef<number | null>(null)
-  const blinkBubbleMaxTimerRef = useRef<number | null>(null)
+  const prevBlinkTotalRef = useRef<number | null>(null)
   const lowBlinkBubbleEpisodeShownRef = useRef(false)
   const lowBlinkToastEpisodeShownRef = useRef(false)
+  const carePopupAutoHideTimerRef = useRef<number | null>(null)
+  const carePopupExitTimerRef = useRef<number | null>(null)
+  const carePopupTriggerShownRef = useRef<string | null>(null)
+  const prevVoiceTriggerRef = useRef<string | null>(null)
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const navigate = useCallback((screen: ScreenId) => {
     setCurrentScreen(screen)
@@ -489,6 +539,11 @@ export default function App() {
   }, [loadIntegratedData])
 
   useEffect(() => {
+    void getVoiceAlertSettings(FAMILY_ID).then(setVoiceAlertSettings).catch(() => {})
+    void getVoiceRecordings(FAMILY_ID).then(setVoiceRecordings).catch(() => {})
+  }, [])
+
+  useEffect(() => {
     const nextScreen = AUTO_ADVANCE[currentScreen]
     if (!nextScreen) {
       return
@@ -526,11 +581,11 @@ export default function App() {
   }, [])
 
   useEffect(() => () => {
-    if (blinkBubbleTimerRef.current != null) {
-      window.clearTimeout(blinkBubbleTimerRef.current)
+    if (carePopupAutoHideTimerRef.current != null) {
+      window.clearTimeout(carePopupAutoHideTimerRef.current)
     }
-    if (blinkBubbleMaxTimerRef.current != null) {
-      window.clearTimeout(blinkBubbleMaxTimerRef.current)
+    if (carePopupExitTimerRef.current != null) {
+      window.clearTimeout(carePopupExitTimerRef.current)
     }
   }, [])
 
@@ -628,61 +683,144 @@ export default function App() {
 
   const showKidsCarePopup = profileMode === 'kids' && (currentScreen === 'kids-main' || currentScreen === 'youtube-care')
 
+  // 버블 에피소드 시작 / 종료
   useEffect(() => {
     if (kidsCarePopup?.showBubbles) {
-      if (lowBlinkBubbleEpisodeShownRef.current) {
-        return
-      }
-
+      if (lowBlinkBubbleEpisodeShownRef.current) return
       lowBlinkBubbleEpisodeShownRef.current = true
-
-      if (blinkBubbleTimerRef.current != null) {
-        window.clearTimeout(blinkBubbleTimerRef.current)
-        blinkBubbleTimerRef.current = null
-      }
-      if (blinkBubbleMaxTimerRef.current != null) {
-        window.clearTimeout(blinkBubbleMaxTimerRef.current)
-      }
-
-      setBlinkBubbleState('rising')
-      blinkBubbleMaxTimerRef.current = window.setTimeout(() => {
-        setBlinkBubbleState('bursting')
-        if (blinkBubbleTimerRef.current != null) {
-          window.clearTimeout(blinkBubbleTimerRef.current)
-        }
-        blinkBubbleTimerRef.current = window.setTimeout(() => {
-          setBlinkBubbleState('hidden')
-          blinkBubbleTimerRef.current = null
-        }, BUBBLE_BURST_DURATION_MS)
-        blinkBubbleMaxTimerRef.current = null
-      }, BLINK_GUIDANCE_DURATION_MS)
+      prevBlinkTotalRef.current = null
+      setActiveBubbles(spawnBubbles())
       return
     }
 
     lowBlinkBubbleEpisodeShownRef.current = false
     lowBlinkToastEpisodeShownRef.current = false
-    if (blinkBubbleMaxTimerRef.current != null) {
-      window.clearTimeout(blinkBubbleMaxTimerRef.current)
-      blinkBubbleMaxTimerRef.current = null
+    prevBlinkTotalRef.current = null
+    setActiveBubbles([])
+  }, [kidsCarePopup?.showBubbles])
+
+  // 깜박임 1회 감지 → 버블 1개 팝
+  useEffect(() => {
+    if (!kidsCarePopup?.showBubbles) return
+    const total = monitorLive?.blinkTotal
+    if (total == null) return
+
+    if (prevBlinkTotalRef.current == null) {
+      prevBlinkTotalRef.current = total
+      return
     }
 
-    setBlinkBubbleState((prev) => {
-      if (prev !== 'rising') {
-        return prev === 'bursting' ? prev : 'hidden'
-      }
+    const newBlinks = total - prevBlinkTotalRef.current
+    prevBlinkTotalRef.current = total
+    if (newBlinks <= 0) return
 
-      if (blinkBubbleTimerRef.current != null) {
-        window.clearTimeout(blinkBubbleTimerRef.current)
-      }
-
-      blinkBubbleTimerRef.current = window.setTimeout(() => {
-        setBlinkBubbleState('hidden')
-        blinkBubbleTimerRef.current = null
-      }, BUBBLE_BURST_DURATION_MS)
-
-      return 'bursting'
+    setActiveBubbles((prev) => {
+      let toPop = Math.min(newBlinks, prev.filter((b) => b.state === 'rising').length)
+      return prev.map((b) => {
+        if (b.state === 'rising' && toPop > 0) {
+          toPop--
+          return { ...b, state: 'popping' as const }
+        }
+        return b
+      })
     })
-  }, [kidsCarePopup?.showBubbles])
+  }, [monitorLive?.blinkTotal, kidsCarePopup?.showBubbles])
+
+  // 알림 발생 시 음성 자동 재생
+  useEffect(() => {
+    const trigger = kidsCarePopup?.trigger ?? null
+    if (trigger === null) {
+      prevVoiceTriggerRef.current = null
+      return
+    }
+    if (trigger === prevVoiceTriggerRef.current) return
+    prevVoiceTriggerRef.current = trigger
+
+    const validTypes: VoiceAlertType[] = ['distance_near', 'distance_far', 'blink_high', 'blink_low', 'stretch']
+    if (!validTypes.includes(trigger as VoiceAlertType)) return
+
+    const alertType = trigger as VoiceAlertType
+    const group: VoiceAlertGroup = (alertType === 'distance_near' || alertType === 'distance_far') ? 'distance'
+      : (alertType === 'blink_high' || alertType === 'blink_low') ? 'blink'
+      : 'stretch'
+
+    const groupEnabled = group === 'distance' ? voiceAlertSettings.distanceEnabled
+      : group === 'blink' ? voiceAlertSettings.blinkEnabled
+      : voiceAlertSettings.stretchEnabled
+    if (!groupEnabled) return
+
+    const activeSpeakerId = group === 'distance' ? voiceAlertSettings.distanceActiveSpeakerId
+      : group === 'blink' ? voiceAlertSettings.blinkActiveSpeakerId
+      : voiceAlertSettings.stretchActiveSpeakerId
+
+    void getVoiceRecordingsByAlert(FAMILY_ID, alertType).then((recs) => {
+      const enabledRecs = recs.filter((r) => r.enabled)
+      if (enabledRecs.length === 0) return
+      const rec = activeSpeakerId
+        ? (enabledRecs.find((r) => r.speakerId === activeSpeakerId) ?? enabledRecs[Math.floor(Math.random() * enabledRecs.length)])
+        : enabledRecs[Math.floor(Math.random() * enabledRecs.length)]
+      if (!rec.audioData) return
+      if (voiceAudioRef.current) voiceAudioRef.current.pause()
+      const audio = new Audio(rec.audioData)
+      voiceAudioRef.current = audio
+      audio.onended = () => { voiceAudioRef.current = null }
+      void audio.play().catch(() => {})
+    }).catch(() => {})
+  }, [kidsCarePopup?.trigger, voiceAlertSettings])
+
+  // Non-bubble care popup: 15s 자동 닫기 + 조건 해소 시 즉시 닫기
+  useEffect(() => {
+    if (kidsCarePopup?.showBubbles) {
+      // 버블 팝업은 위 effect가 처리
+      return
+    }
+
+    const trigger = kidsCarePopup?.trigger ?? null
+
+    function startExit() {
+      setCarePopupExiting(true)
+      carePopupExitTimerRef.current = window.setTimeout(() => {
+        setCarePopupVisible(false)
+        setCarePopupExiting(false)
+        carePopupExitTimerRef.current = null
+      }, 400)
+    }
+
+    if (trigger === null) {
+      // 조건 해소 → 즉시 퇴장 애니
+      if (carePopupTriggerShownRef.current !== null) {
+        carePopupTriggerShownRef.current = null
+        if (carePopupAutoHideTimerRef.current != null) {
+          window.clearTimeout(carePopupAutoHideTimerRef.current)
+          carePopupAutoHideTimerRef.current = null
+        }
+        startExit()
+      }
+      return
+    }
+
+    if (trigger === carePopupTriggerShownRef.current) {
+      // 같은 조건 → 타이머 유지
+      return
+    }
+
+    // 새 조건 → 팝업 표시 + 15s 타이머 시작
+    carePopupTriggerShownRef.current = trigger
+    if (carePopupAutoHideTimerRef.current != null) {
+      window.clearTimeout(carePopupAutoHideTimerRef.current)
+    }
+    if (carePopupExitTimerRef.current != null) {
+      window.clearTimeout(carePopupExitTimerRef.current)
+    }
+    setCarePopupExiting(false)
+    setCarePopupVisible(true)
+
+    carePopupAutoHideTimerRef.current = window.setTimeout(() => {
+      carePopupAutoHideTimerRef.current = null
+      carePopupTriggerShownRef.current = null
+      startExit()
+    }, CARE_POPUP_DISPLAY_MS)
+  }, [kidsCarePopup?.trigger, kidsCarePopup?.showBubbles])
 
   useEffect(() => {
     if (!activeBackendChild?.childId || !activeMonitor?.active) {
@@ -1061,6 +1199,29 @@ export default function App() {
     }))
   }, [])
 
+  const handleToggleVoiceGroup = useCallback(async (group: VoiceAlertGroup, enabled: boolean) => {
+    const key = (`${group}Enabled`) as keyof VoiceAlertSettings
+    const next = { ...voiceAlertSettings, [key]: enabled }
+    setVoiceAlertSettings(next)
+    await saveVoiceAlertSettings({ familyId: FAMILY_ID, ...next }).catch(() => {})
+  }, [voiceAlertSettings])
+
+  const handleSetGroupActiveSpeaker = useCallback(async (group: VoiceAlertGroup, speakerId: string | null) => {
+    const key = (`${group}ActiveSpeakerId`) as keyof VoiceAlertSettings
+    const next = { ...voiceAlertSettings, [key]: speakerId }
+    setVoiceAlertSettings(next)
+    await saveVoiceAlertSettings({ familyId: FAMILY_ID, ...next }).catch(() => {})
+  }, [voiceAlertSettings])
+
+  const handleVoiceRecordingsChanged = useCallback(() => {
+    void getVoiceRecordings(FAMILY_ID).then(setVoiceRecordings).catch(() => {})
+  }, [])
+
+  const handleToggleClipEnabled = useCallback(async (speakerId: string, alertType: VoiceAlertType, enabled: boolean) => {
+    await toggleVoiceRecordingEnabled(FAMILY_ID, speakerId, alertType, enabled)
+    handleVoiceRecordingsChanged()
+  }, [handleVoiceRecordingsChanged])
+
   const activeKidsProfile = profiles.find((profile) => profile.id === activeProfileId)
   const kidsTheme = activeKidsProfile ? getThemeByAge(activeKidsProfile.age) : null
   const familyName = familyOverview?.familyName ?? '우리 가족'
@@ -1236,31 +1397,36 @@ export default function App() {
         ))}
       </div>
 
-      {showKidsCarePopup && kidsCarePopup && (
+      {showKidsCarePopup && kidsCarePopup && ((kidsCarePopup.showBubbles && activeBubbles.length > 0) || carePopupVisible) && (
         <div
-          className={`blink-bubble-overlay blink-bubble-overlay--${blinkBubbleState} ${kidsCarePopup.showBubbles ? 'blink-bubble-overlay--with-bubbles' : ''}`}
+          className={`blink-bubble-overlay ${kidsCarePopup.showBubbles ? 'blink-bubble-overlay--with-bubbles' : ''}`}
           aria-live="polite"
           aria-label="아이들 시청 안내"
         >
-          {kidsCarePopup.showBubbles && (
+          {kidsCarePopup.showBubbles && activeBubbles.length > 0 && (
             <div className="blink-bubble-cluster" aria-hidden="true">
-              {Array.from({ length: 20 }).map((_, index) => (
+              {activeBubbles.map((bubble) => (
                 <span
-                  key={`blink-bubble-${index}`}
-                  className="blink-bubble"
+                  key={bubble.id}
+                  className={`blink-bubble blink-bubble--${bubble.state}`}
                   style={{
-                    ['--bubble-size' as string]: `${34 + (index % 5) * 14}px`,
-                    ['--bubble-left' as string]: `${2 + ((index * 17) % 94)}%`,
-                    ['--bubble-delay' as string]: `${(index % 6) * 0.22}s`,
-                    ['--bubble-duration' as string]: `${3.6 + (index % 4) * 0.55}s`,
-                    ['--bubble-drift' as string]: `${-32 + (index % 7) * 10}px`,
-                    ['--bubble-rise' as string]: `${220 + (index % 5) * 70}px`,
+                    ['--bubble-size' as string]: `${bubble.size}px`,
+                    ['--bubble-left' as string]: `${bubble.left}%`,
+                    ['--bubble-delay' as string]: `${bubble.delay}s`,
+                    ['--bubble-duration' as string]: `${bubble.duration}s`,
+                    ['--bubble-drift' as string]: `${bubble.drift}px`,
+                    ['--bubble-rise' as string]: `${bubble.rise}px`,
                   } as CSSProperties}
+                  onAnimationEnd={(e) => {
+                    if (e.animationName === 'bubble-pop') {
+                      setActiveBubbles((prev) => prev.filter((b) => b.id !== bubble.id))
+                    }
+                  }}
                 />
               ))}
             </div>
           )}
-          <div className="kids-care-popup">
+          <div className={`kids-care-popup${carePopupExiting ? ' kids-care-popup--exit' : ''}`}>
             <div className="kids-care-popup__bear" aria-hidden="true">
               <BearIcon size={88} />
             </div>
@@ -1325,6 +1491,12 @@ export default function App() {
           onUpdateYoutubeCategory={handleYoutubeCategoryChange}
           onToggleAutoBlock={handleAutoBlockToggle}
           onUpdateWatchPolicy={handleWatchPolicyChange}
+          voiceAlertSettings={voiceAlertSettings}
+          voiceRecordings={voiceRecordings}
+          onToggleVoiceGroup={handleToggleVoiceGroup}
+          onSetGroupActiveSpeaker={handleSetGroupActiveSpeaker}
+          onToggleClipEnabled={handleToggleClipEnabled}
+          onVoiceRecordingsChanged={handleVoiceRecordingsChanged}
         />
       )}
       {currentScreen === 'watch-history' && (

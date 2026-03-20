@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type {
   AnalysisResponse,
   ParentAlertResponse,
@@ -5,6 +6,10 @@ import type {
   ParentChildResponse,
   RuntimeSettingsResponse,
   SystemHealthResponse,
+  VoiceAlertGroup,
+  VoiceAlertSettings,
+  VoiceAlertType,
+  VoiceRecordingMeta,
 } from '../lib/api'
 import {
   getEnabledYoutubeCategories,
@@ -13,6 +18,16 @@ import {
   type YoutubeCategorySettings,
 } from '../data/youtubeExperience'
 import { summarizeAlert } from '../lib/integration'
+import { VoiceGroupPanel } from './VoiceGroupPanel'
+
+type VoiceGroupDef = { id: VoiceAlertGroup; label: string; icon: string; alertTypes: VoiceAlertType[] }
+const VOICE_GROUPS: VoiceGroupDef[] = [
+  { id: 'distance', label: '시청 거리', icon: '📏', alertTypes: ['distance_near', 'distance_far'] },
+  { id: 'blink',    label: '눈 깜박임', icon: '👁️', alertTypes: ['blink_high', 'blink_low'] },
+  { id: 'stretch',  label: '자세 점수', icon: '🧘', alertTypes: ['stretch'] },
+]
+
+type ThinQView = 'main' | `voice-${VoiceAlertGroup}`
 
 type RatioLabel =
   | '교육'
@@ -38,6 +53,12 @@ type ThinQScreenProps = {
   onUpdateYoutubeCategory: (categoryId: YoutubeCategoryId, enabled: boolean) => void
   onToggleAutoBlock: (childId: number, enabled: boolean) => Promise<void> | void
   onUpdateWatchPolicy: (childId: number, patch: Partial<ChildWatchPolicyResponse>) => Promise<void> | void
+  voiceAlertSettings: VoiceAlertSettings
+  voiceRecordings: VoiceRecordingMeta[]
+  onToggleVoiceGroup: (group: VoiceAlertGroup, enabled: boolean) => void
+  onSetGroupActiveSpeaker: (group: VoiceAlertGroup, speakerId: string | null) => void
+  onToggleClipEnabled: (speakerId: string, alertType: VoiceAlertType, enabled: boolean) => Promise<void>
+  onVoiceRecordingsChanged: () => void
 }
 
 export function ThinQScreen({
@@ -55,7 +76,14 @@ export function ThinQScreen({
   onUpdateYoutubeCategory,
   onToggleAutoBlock,
   onUpdateWatchPolicy,
+  voiceAlertSettings,
+  voiceRecordings,
+  onToggleVoiceGroup,
+  onSetGroupActiveSpeaker,
+  onToggleClipEnabled,
+  onVoiceRecordingsChanged,
 }: ThinQScreenProps) {
+  const [view, setView] = useState<ThinQView>('main')
   const localizedDailySummary = localizeReportSummary(dailySummary)
   const localizedAlertSummary = localizeReportSummary(alertSummary)
   const healthChips = systemHealth
@@ -69,6 +97,31 @@ export function ThinQScreen({
 
   const enabledCategories = getEnabledYoutubeCategories(youtubeCategorySettings)
   const contentMix = buildContentMix(analysisHistory)
+
+  // 그룹 패널 뷰 (전체 화면 교체)
+  if (view !== 'main') {
+    const groupId = view.replace('voice-', '') as VoiceAlertGroup
+    const groupEnabled = groupId === 'distance' ? voiceAlertSettings.distanceEnabled
+      : groupId === 'blink' ? voiceAlertSettings.blinkEnabled
+      : voiceAlertSettings.stretchEnabled
+    const activeSpeakerId = groupId === 'distance' ? voiceAlertSettings.distanceActiveSpeakerId
+      : groupId === 'blink' ? voiceAlertSettings.blinkActiveSpeakerId
+      : voiceAlertSettings.stretchActiveSpeakerId
+
+    return (
+      <div className="screen thinq-screen-shell">
+        <VoiceGroupPanel
+          group={groupId}
+          groupEnabled={groupEnabled}
+          activeSpeakerId={activeSpeakerId}
+          onBack={() => { setView('main'); onVoiceRecordingsChanged() }}
+          onToggleEnabled={(enabled) => onToggleVoiceGroup(groupId, enabled)}
+          onSetActiveSpeaker={(speakerId) => onSetGroupActiveSpeaker(groupId, speakerId)}
+          onToggleClip={onToggleClipEnabled}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="screen thinq-screen-shell">
@@ -249,6 +302,37 @@ export function ThinQScreen({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* ── 자세 관리 음성 알림 ─────────────────────────────────────── */}
+        <div className="thinq-category-card">
+          <span className="thinq-insight-kicker">자세 관리 음성 알림</span>
+          <strong>알림이 뜰 때 가족 목소리로 안내해요</strong>
+          <p>시청 거리·눈 깜박임·자세 알림마다 녹음해 두면 알림과 함께 자동 재생됩니다.</p>
+          <div className="thinq-voice-group-row">
+            {VOICE_GROUPS.map(({ id, label, icon, alertTypes }) => {
+              const count = voiceRecordings.filter((r) => alertTypes.includes(r.alertType)).length
+              const enabled = id === 'distance' ? voiceAlertSettings.distanceEnabled
+                : id === 'blink' ? voiceAlertSettings.blinkEnabled
+                : voiceAlertSettings.stretchEnabled
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={`thinq-voice-group-card${enabled ? '' : ' thinq-voice-group-card--off'}`}
+                  onClick={() => setView(`voice-${id}` as ThinQView)}
+                >
+                  <span className="thinq-voice-group-icon">{icon}</span>
+                  <strong className="thinq-voice-group-label">{label}</strong>
+                  <span className="thinq-voice-group-count">{count > 0 ? `${count}개 녹음` : '녹음 없음'}</span>
+                  <span className={`thinq-voice-group-status${enabled ? ' thinq-voice-group-status--on' : ''}`}>
+                    {enabled ? '사용 중' : '꺼짐'}
+                  </span>
+                  <span className="thinq-voice-group-chevron">›</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 

@@ -307,6 +307,7 @@ export interface MonitorLiveResponse {
   sessionId: string | null
   capturedAt: string | null
   blinkBpm: number | null
+  blinkTotal: number | null
   screenDistanceCm: number | null
   frontFacing: boolean | null
   poseStatus: string | null
@@ -536,4 +537,106 @@ export function getActiveAddictionMonitor(childId?: number | null) {
 
 export function getMonitorLive(childId: number) {
   return requestFastapiJson<MonitorLiveResponse>(`/fastapi/monitor/live?childId=${childId}`)
+}
+
+// ── 음성 알림 ──────────────────────────────────────────────────────────────────
+
+export type VoiceAlertType =
+  | 'distance_near'
+  | 'distance_far'
+  | 'blink_high'
+  | 'blink_low'
+  | 'stretch'
+
+export type VoiceAlertGroup = 'distance' | 'blink' | 'stretch'
+
+export interface VoiceRecordingMeta {
+  speakerId: string
+  speakerName: string
+  alertType: VoiceAlertType
+  audioDuration: number
+  createdAt: string
+  enabled: boolean
+}
+
+export interface VoiceRecordingFull extends VoiceRecordingMeta {
+  audioData: string   // data:audio/...;base64,...
+  audioMime: string
+}
+
+export interface VoiceAlertSettings {
+  distanceEnabled: boolean
+  blinkEnabled: boolean
+  stretchEnabled: boolean
+  distanceActiveSpeakerId: string | null
+  blinkActiveSpeakerId: string | null
+  stretchActiveSpeakerId: string | null
+}
+
+export function getVoiceRecordings(familyId: number) {
+  return requestFastapiJson<VoiceRecordingMeta[]>(`/fastapi/voice-alerts/recordings?familyId=${familyId}`)
+}
+
+export function getVoiceRecordingsByAlert(familyId: number, alertType: VoiceAlertType) {
+  return requestFastapiJson<VoiceRecordingFull[]>(
+    `/fastapi/voice-alerts/recordings/by-alert?familyId=${familyId}&alertType=${alertType}`,
+  )
+}
+
+export function saveVoiceRecording(payload: {
+  familyId: number
+  speakerId: string
+  speakerName: string
+  alertType: VoiceAlertType
+  audioData: string
+  audioMime: string
+  audioDuration: number
+}) {
+  return requestFastapiJson<VoiceRecordingMeta>('/fastapi/voice-alerts/recordings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function toggleVoiceRecordingEnabled(
+  familyId: number,
+  speakerId: string,
+  alertType: VoiceAlertType,
+  enabled: boolean,
+) {
+  return requestFastapiJson<VoiceRecordingMeta>(
+    `/fastapi/voice-alerts/recordings/${encodeURIComponent(speakerId)}/${alertType}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ familyId, enabled }),
+    },
+  )
+}
+
+export function deleteVoiceRecording(familyId: number, speakerId: string, alertType: VoiceAlertType) {
+  return fetch(`/fastapi/voice-alerts/recordings/${encodeURIComponent(speakerId)}/${alertType}?familyId=${familyId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function getVoiceAlertSettings(familyId: number) {
+  return requestFastapiJson<VoiceAlertSettings>(`/fastapi/voice-alerts/settings?familyId=${familyId}`)
+}
+
+export function saveVoiceAlertSettings(payload: {
+  familyId: number
+  distanceEnabled: boolean
+  blinkEnabled: boolean
+  stretchEnabled: boolean
+  distanceActiveSpeakerId: string | null
+  blinkActiveSpeakerId: string | null
+  stretchActiveSpeakerId: string | null
+}) {
+  return requestFastapiJson<VoiceAlertSettings>('/fastapi/voice-alerts/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
