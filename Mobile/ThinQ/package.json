@@ -1,0 +1,34 @@
+{
+  "name": "tv-habit-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "자녀 TV 시청 습관 모니터링 앱 — LG SmartCam 연동 iOS 스타일 React 앱",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --env-file=.env server.cjs",
+    "dev:web": "vite --host 0.0.0.0 --port 4174",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4174",
+    "lint": "eslint src --ext .js,.jsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1",
+    "express": "^5.2.1",
+    "lucide-react": "^0.383.0",
+    "mongodb": "^7.1.0",
+    "pg": "^8.20.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.34.3",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.7",
+    "vite": "^5.4.0"
+  }
+}
