@@ -115,6 +115,11 @@ public class ParentControlService {
 		return toChildResponse(getRequiredChild(childId));
 	}
 
+	public void deleteChild(int childId) {
+		getRequiredChild(childId);
+		parentControlMapper.deleteChild(childId);
+	}
+
 	public ChildProfile getChildProfile(int childId) {
 		return parentControlMapper.findChildById(childId);
 	}

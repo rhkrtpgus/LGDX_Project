@@ -2205,6 +2205,119 @@
   100% { transform: translate(-50%, -50%) scale(200); opacity: 1; }
 }
 
+/* ── 헤더 (타이틀 + 편집 버튼) ── */
+.pss-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+
+.pss-edit-btn {
+  flex-shrink: 0;
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255,255,255,0.3);
+  background: transparent;
+  color: rgba(255,255,255,0.7);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+.pss-edit-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.pss-edit-btn--active {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border-color: rgba(255,255,255,0.5);
+}
+
+/* ── 카드 래퍼 (삭제 뱃지 위치 기준) ── */
+.pss-card-wrap {
+  position: relative;
+}
+
+/* 편집 모드 카드 흔들림 */
+.pss-card--edit {
+  animation: pss-wobble 0.5s ease infinite;
+  cursor: default;
+  opacity: 0.85;
+}
+@keyframes pss-wobble {
+  0%,100% { transform: rotate(0deg); }
+  25%      { transform: rotate(-1.5deg); }
+  75%      { transform: rotate(1.5deg); }
+}
+
+/* 삭제 × 뱃지 */
+.pss-delete-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  border: 2px solid #0d0d1a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: transform 0.15s, background 0.15s;
+}
+.pss-delete-badge:hover { transform: scale(1.2); background: #ff1f22; }
+
+/* 인라인 삭제 확인 오버레이 */
+.pss-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: rgba(13,13,26,0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 20;
+  backdrop-filter: blur(4px);
+}
+.pss-confirm-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+.pss-confirm-btns {
+  display: flex;
+  gap: 8px;
+}
+.pss-confirm-yes,
+.pss-confirm-no {
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+.pss-confirm-yes:disabled,
+.pss-confirm-no:disabled { opacity: 0.5; cursor: default; }
+.pss-confirm-yes { background: #ff4d4f; color: #fff; }
+.pss-confirm-yes:hover:not(:disabled) { background: #ff1f22; }
+.pss-confirm-no  { background: rgba(255,255,255,0.15); color: #fff; }
+.pss-confirm-no:hover:not(:disabled) { background: rgba(255,255,255,0.25); }
+
 /* ═══════════════════════════════════════════════════════════════
    KidsMainScreen – 유아(baby) 레이아웃 전용
    ═══════════════════════════════════════════════════════════════ */

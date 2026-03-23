@@ -143,6 +143,7 @@ const YOUTUBE_CATEGORY_QUERY_SEEDS: Record<YoutubeCategoryId, string> = {
 
 type Props = {
   onNavigate: (screen: ScreenId) => void
+  onRequestProtectedUrl: (url: string) => void
   profiles: ChildProfile[]
   activeProfileId: string
   onSwitchProfile: (id: string) => void
@@ -168,6 +169,7 @@ type Props = {
 
 export function KidsMainScreen({
   onNavigate,
+  onRequestProtectedUrl,
   profiles,
   activeProfileId,
   onSwitchProfile,
@@ -493,8 +495,8 @@ export function KidsMainScreen({
       return
     }
 
+    // 'all'은 유효한 선택 — 강제 리셋하지 않음
     if (activeYoutubeCategoryId === 'all') {
-      setActiveYoutubeCategoryId(recommendationPages[0].id)
       return
     }
 
@@ -561,7 +563,7 @@ export function KidsMainScreen({
     return () => {
       cancelled = true
     }
-  }, [localFallbackExamples, recommendationQuery])
+  }, [localFallbackExamples, recommendationQuery, activeYoutubeCategoryId])
 
   function handleYoutubeSearchSubmit() {
     const trimmed = youtubeSearchQuery.trim()
@@ -858,7 +860,8 @@ export function KidsMainScreen({
                     <iframe
                       title={latestAnalysis?.title ?? playbackItem?.title ?? '키즈 유튜브 재생기'}
                       src={playerEmbedUrl}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                       allowFullScreen
                     />
                   ) : (
@@ -902,7 +905,7 @@ export function KidsMainScreen({
                         <button
                           type="button"
                           className="kids-analysis-open"
-                          onClick={() => window.open(`https://www.youtube.com/watch?v=${playbackVideoId}`, '_blank', 'noopener,noreferrer')}
+                          onClick={() => onRequestProtectedUrl(`https://www.youtube.com/watch?v=${playbackVideoId}`)}
                         >
                           영상 열기
                         </button>
@@ -961,7 +964,7 @@ export function KidsMainScreen({
                   <h4>보호 상태</h4>
                   <p>최근 위험도: <span style={{ color: getRiskTone(recentAlerts[0]?.riskLevel) }}>{recentAlerts[0]?.riskLevel ?? '안정'}</span></p>
                   <p>{summarizeAlert(recentAlerts[0])}</p>
-                  <p>오늘 제한: {formatMinutes(activeChild?.watchPolicy.dailyLimitMinutes)}</p>
+                  <p>오늘 제한: {formatMinutes(activeChild?.watchPolicy?.dailyLimitMinutes)}</p>
                   <button type="button" className="kids-mini-link" onClick={() => onNavigate('settings-youtube')}>
                     유튜브 필터와 보호 설정 보기
                   </button>

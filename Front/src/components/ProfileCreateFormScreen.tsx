@@ -111,7 +111,7 @@ export function ProfileCreateFormScreen({ onNavigate, onAddProfile }: Props) {
               }
               try {
                 await onAddProfile(np, { useCam })
-                onNavigate(useCam ? 'cam-before' : 'kids-main')
+                onNavigate(useCam ? 'cam-before' : 'done')
               } catch (error) {
                 setBuildDone(false)
                 console.error(error)

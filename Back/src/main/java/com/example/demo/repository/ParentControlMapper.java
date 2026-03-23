@@ -62,6 +62,8 @@ public interface ParentControlMapper {
 
 	void insertAlert(AlertLogRecord record);
 
+	void deleteChild(@Param("childId") int childId);
+
 	int countPolicies();
 
 	int countHighRiskAlerts();

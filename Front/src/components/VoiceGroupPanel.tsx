@@ -4,7 +4,6 @@ import {
   deleteVoiceRecording,
   getVoiceRecordings,
   saveVoiceRecording,
-  toggleVoiceRecordingEnabled,
 } from '../lib/api'
 
 const FAMILY_ID = 1
@@ -109,7 +108,7 @@ export function VoiceGroupPanel({
     if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null }
   }, [blobUrl])
 
-  const startRecording = useCallback(async (alertType: VoiceAlertType) => {
+  const startRecording = useCallback(async (_alertType: VoiceAlertType) => {
     setErrorMsg(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })

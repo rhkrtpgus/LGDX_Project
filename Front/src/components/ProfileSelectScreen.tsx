@@ -8,6 +8,7 @@ type ProfileSelectScreenProps = {
   profiles: ChildProfile[]
   onSelectProfile: (profileId: string) => void
   onNavigate: (screen: ScreenId) => void
+  onDeleteProfile?: (profileId: string) => Promise<void>
 }
 
 interface RippleState {
@@ -21,10 +22,15 @@ export function ProfileSelectScreen({
   profiles,
   onSelectProfile,
   onNavigate,
+  onDeleteProfile,
 }: ProfileSelectScreenProps) {
   const [ripple, setRipple] = useState<RippleState | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   function handleSelect(profile: ChildProfile, e: React.MouseEvent) {
+    if (editMode) return
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = rect.left + rect.width / 2
     const y = rect.top + rect.height / 2
@@ -39,6 +45,7 @@ export function ProfileSelectScreen({
   }
 
   function handleParent(e: React.MouseEvent) {
+    if (editMode) return
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = rect.left + rect.width / 2
     const y = rect.top + rect.height / 2
@@ -50,43 +57,103 @@ export function ProfileSelectScreen({
     }, 600)
   }
 
+  function toggleEditMode() {
+    setEditMode(v => !v)
+    setConfirmId(null)
+  }
+
+  async function handleConfirmDelete(profileId: string) {
+    if (!onDeleteProfile || deleting) return
+    setDeleting(true)
+    try {
+      await onDeleteProfile(profileId)
+      setConfirmId(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="screen pss-screen">
       {/* 배경 그라데이션 */}
       <div className="pss-bg" />
 
       <div className="pss-content">
-        <h1 className="pss-title">누가 보고 있나요?</h1>
-        <p className="pss-sub">프로필을 선택하면 맞춤 콘텐츠가 시작돼요</p>
+        <div className="pss-header">
+          <div>
+            <h1 className="pss-title">누가 보고 있나요?</h1>
+            <p className="pss-sub">프로필을 선택하면 맞춤 콘텐츠가 시작돼요</p>
+          </div>
+          {onDeleteProfile && (
+            <button type="button" className={`pss-edit-btn${editMode ? ' pss-edit-btn--active' : ''}`} onClick={toggleEditMode}>
+              {editMode ? '완료' : '편집'}
+            </button>
+          )}
+        </div>
 
         <div className="pss-cards">
           {/* 자녀 프로필 카드들 */}
           {profiles.map((profile) => {
             const theme = getThemeByAge(profile.age)
+            const isConfirming = confirmId === profile.id
             return (
-              <button
-                key={profile.id}
-                type="button"
-                className="pss-card"
-                onClick={(e) => handleSelect(profile, e)}
-              >
-                {/* 아바타 */}
-                <div
-                  className="pss-avatar"
-                  style={{ background: profile.color, boxShadow: `0 8px 32px ${profile.color}88` }}
+              <div key={profile.id} className="pss-card-wrap">
+                <button
+                  type="button"
+                  className={`pss-card${editMode ? ' pss-card--edit' : ''}`}
+                  onClick={(e) => handleSelect(profile, e)}
                 >
-                  <span className="pss-avatar-char">{profile.name[0]}</span>
                   <div
-                    className="pss-avatar-ring"
-                    style={{ borderColor: theme.accent }}
-                  />
-                </div>
-                <p className="pss-name">{profile.name}</p>
-                <p className="pss-age">{profile.age}세</p>
-                <div className="pss-theme-chip" style={{ background: theme.accent }}>
-                  {theme.label}
-                </div>
-              </button>
+                    className="pss-avatar"
+                    style={{ background: profile.color, boxShadow: `0 8px 32px ${profile.color}88` }}
+                  >
+                    <span className="pss-avatar-char">{profile.name[0]}</span>
+                    <div className="pss-avatar-ring" style={{ borderColor: theme.accent }} />
+                  </div>
+                  <p className="pss-name">{profile.name}</p>
+                  <p className="pss-age">{profile.age}세</p>
+                  <div className="pss-theme-chip" style={{ background: theme.accent }}>
+                    {theme.label}
+                  </div>
+                </button>
+
+                {/* 삭제 뱃지 */}
+                {editMode && !isConfirming && (
+                  <button
+                    type="button"
+                    className="pss-delete-badge"
+                    onClick={() => setConfirmId(profile.id)}
+                    aria-label={`${profile.name} 삭제`}
+                  >
+                    ✕
+                  </button>
+                )}
+
+                {/* 인라인 확인 */}
+                {editMode && isConfirming && (
+                  <div className="pss-confirm-overlay">
+                    <p className="pss-confirm-text">삭제할까요?</p>
+                    <div className="pss-confirm-btns">
+                      <button
+                        type="button"
+                        className="pss-confirm-yes"
+                        disabled={deleting}
+                        onClick={() => handleConfirmDelete(profile.id)}
+                      >
+                        {deleting ? '…' : '삭제'}
+                      </button>
+                      <button
+                        type="button"
+                        className="pss-confirm-no"
+                        disabled={deleting}
+                        onClick={() => setConfirmId(null)}
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )
           })}
 
@@ -94,7 +161,7 @@ export function ProfileSelectScreen({
           <button
             type="button"
             className="pss-card pss-card--add"
-            onClick={() => onNavigate('profile-create')}
+            onClick={() => !editMode && onNavigate('profile-create')}
           >
             <div className="pss-avatar pss-avatar--add">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">

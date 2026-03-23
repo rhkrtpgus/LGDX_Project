@@ -3,7 +3,7 @@ import './App.css'
 
 import type { ScreenId } from './data/kidsProfileFlow'
 import { AUTO_ADVANCE, AUTO_ADVANCE_DELAY_MS } from './data/kidsProfileFlow'
-import { DEFAULT_PROFILES, getThemeByAge, type ChildProfile } from './data/profiles'
+import { getThemeByAge, type ChildProfile } from './data/profiles'
 import {
   DEFAULT_YOUTUBE_CATEGORY_SETTINGS,
   type YoutubeCategoryId,
@@ -13,6 +13,7 @@ import {
 import {
   analyzeYoutube,
   createChildProfile,
+  deleteChildProfile,
   getActiveAddictionMonitor,
   getAnalysisHistory,
   getMonitorLive,
@@ -86,7 +87,6 @@ const FAMILY_ID = 1
 const TOAST_DURATION_MS = 60_000
 const BLINK_WARNING_THRESHOLD_BPM = 10
 const BLINK_GUIDANCE_DURATION_MS = 15_000
-const BUBBLE_POP_DURATION_MS = 620
 const BUBBLE_COUNT_MIN = 5
 const BUBBLE_COUNT_MAX = 7
 const CARE_POPUP_DISPLAY_MS = 15_000
@@ -382,8 +382,8 @@ function deriveBirthYearFromAge(age: number, nowYear = new Date().getFullYear())
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenId>('main')
-  const [profiles, setProfiles] = useState<ChildProfile[]>([...DEFAULT_PROFILES])
-  const [activeProfileId, setActiveProfileId] = useState<string>(DEFAULT_PROFILES[0].id)
+  const [profiles, setProfiles] = useState<ChildProfile[]>([])
+  const [activeProfileId, setActiveProfileId] = useState<string>('')
   const [sharedMode, setSharedMode] = useState(false)
   const [profileMode, setProfileMode] = useState<ProfileMode>('adult')
   const [parentPin, setParentPin] = useState(loadStoredParentPin)
@@ -410,6 +410,12 @@ export default function App() {
   const [activeBubbles, setActiveBubbles] = useState<BubbleItem[]>([])
   const [carePopupVisible, setCarePopupVisible] = useState(false)
   const [carePopupExiting, setCarePopupExiting] = useState(false)
+  const [demoPopupVisible, setDemoPopupVisible] = useState(false)
+  const [demoPopupExiting, setDemoPopupExiting] = useState(false)
+  const [demoPopupContent, setDemoPopupContent] = useState<{ title: string; message: string }>({ title: '', message: '' })
+  const [demoBubbleVisible, setDemoBubbleVisible] = useState(false)
+  const [demoBubbleExiting, setDemoBubbleExiting] = useState(false)
+  const [demoBubbleBubbles, setDemoBubbleBubbles] = useState<BubbleItem[]>([])
   const [voiceAlertSettings, setVoiceAlertSettings] = useState<VoiceAlertSettings>({
     distanceEnabled: true,
     blinkEnabled: true,
@@ -425,11 +431,16 @@ export default function App() {
   const prevBlinkTotalRef = useRef<number | null>(null)
   const lowBlinkBubbleEpisodeShownRef = useRef(false)
   const lowBlinkToastEpisodeShownRef = useRef(false)
+  const lowBlinkBubbleAutoHideTimerRef = useRef<number | null>(null)
   const carePopupAutoHideTimerRef = useRef<number | null>(null)
   const carePopupExitTimerRef = useRef<number | null>(null)
   const carePopupTriggerShownRef = useRef<string | null>(null)
   const prevVoiceTriggerRef = useRef<string | null>(null)
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null)
+  const demoPopupTimerRef = useRef<number | null>(null)
+  const demoPopupExitTimerRef = useRef<number | null>(null)
+  const demoBubbleTimerRef = useRef<number | null>(null)
+  const demoBubbleExitTimerRef = useRef<number | null>(null)
 
   const navigate = useCallback((screen: ScreenId) => {
     setCurrentScreen(screen)
@@ -506,13 +517,11 @@ export default function App() {
 
       const normalizedChildren = overview.children.map(normalizeChildResponse)
 
-      const nextProfiles = normalizedChildren.length > 0
-        ? buildProfilesFromChildren(normalizedChildren)
-        : [...DEFAULT_PROFILES]
+      const nextProfiles = buildProfilesFromChildren(normalizedChildren)
 
       const selectedProfileId = selection.childId
         ? profileIdFromChildId(selection.childId)
-        : nextProfiles[0]?.id ?? DEFAULT_PROFILES[0].id
+        : nextProfiles[0]?.id ?? ''
 
       setFamilyOverview({
         ...overview,
@@ -690,9 +699,17 @@ export default function App() {
       lowBlinkBubbleEpisodeShownRef.current = true
       prevBlinkTotalRef.current = null
       setActiveBubbles(spawnBubbles())
+      lowBlinkBubbleAutoHideTimerRef.current = window.setTimeout(() => {
+        lowBlinkBubbleAutoHideTimerRef.current = null
+        setActiveBubbles([])
+      }, CARE_POPUP_DISPLAY_MS)
       return
     }
 
+    if (lowBlinkBubbleAutoHideTimerRef.current != null) {
+      window.clearTimeout(lowBlinkBubbleAutoHideTimerRef.current)
+      lowBlinkBubbleAutoHideTimerRef.current = null
+    }
     lowBlinkBubbleEpisodeShownRef.current = false
     lowBlinkToastEpisodeShownRef.current = false
     prevBlinkTotalRef.current = null
@@ -725,6 +742,18 @@ export default function App() {
       })
     })
   }, [monitorLive?.blinkTotal, kidsCarePopup?.showBubbles])
+
+  // 데모 버블 전부 팝 → 팝업 자동 닫기
+  useEffect(() => {
+    if (!demoBubbleVisible || demoBubbleExiting || demoBubbleBubbles.length > 0) return
+    if (demoBubbleTimerRef.current != null) { window.clearTimeout(demoBubbleTimerRef.current); demoBubbleTimerRef.current = null }
+    setDemoBubbleExiting(true)
+    demoBubbleExitTimerRef.current = window.setTimeout(() => {
+      demoBubbleExitTimerRef.current = null
+      setDemoBubbleVisible(false)
+      setDemoBubbleExiting(false)
+    }, 400)
+  }, [demoBubbleBubbles.length, demoBubbleVisible, demoBubbleExiting])
 
   // 알림 발생 시 음성 자동 재생
   useEffect(() => {
@@ -821,6 +850,93 @@ export default function App() {
       startExit()
     }, CARE_POPUP_DISPLAY_MS)
   }, [kidsCarePopup?.trigger, kidsCarePopup?.showBubbles])
+
+  // 단축키: 1 → distance_near 데모 팝업 / Q → 모든 알림 즉시 닫기
+  useEffect(() => {
+    function dismissAll() {
+      // 데모 팝업 닫기
+      if (demoPopupTimerRef.current != null) { window.clearTimeout(demoPopupTimerRef.current); demoPopupTimerRef.current = null }
+      if (demoPopupExitTimerRef.current != null) { window.clearTimeout(demoPopupExitTimerRef.current); demoPopupExitTimerRef.current = null }
+      setDemoPopupExiting(true)
+      window.setTimeout(() => { setDemoPopupVisible(false); setDemoPopupExiting(false) }, 400)
+
+      // 케어 팝업 닫기
+      if (carePopupAutoHideTimerRef.current != null) { window.clearTimeout(carePopupAutoHideTimerRef.current); carePopupAutoHideTimerRef.current = null }
+      if (carePopupExitTimerRef.current != null) { window.clearTimeout(carePopupExitTimerRef.current); carePopupExitTimerRef.current = null }
+      carePopupTriggerShownRef.current = null
+      setCarePopupExiting(true)
+      window.setTimeout(() => { setCarePopupVisible(false); setCarePopupExiting(false) }, 400)
+
+      // 버블 팝업 닫기
+      if (lowBlinkBubbleAutoHideTimerRef.current != null) { window.clearTimeout(lowBlinkBubbleAutoHideTimerRef.current); lowBlinkBubbleAutoHideTimerRef.current = null }
+      setActiveBubbles([])
+
+      // 데모 버블 팝업 닫기
+      if (demoBubbleTimerRef.current != null) { window.clearTimeout(demoBubbleTimerRef.current); demoBubbleTimerRef.current = null }
+      if (demoBubbleExitTimerRef.current != null) { window.clearTimeout(demoBubbleExitTimerRef.current); demoBubbleExitTimerRef.current = null }
+      setDemoBubbleExiting(true)
+      window.setTimeout(() => { setDemoBubbleVisible(false); setDemoBubbleExiting(false); setDemoBubbleBubbles([]) }, 400)
+
+      // 토스트 알림 전체 닫기
+      setAlertToasts([])
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.repeat) return
+
+      if (e.code === 'Digit1' || e.code === 'Digit3') {
+        if (demoPopupTimerRef.current != null) window.clearTimeout(demoPopupTimerRef.current)
+        if (demoPopupExitTimerRef.current != null) window.clearTimeout(demoPopupExitTimerRef.current)
+
+        setDemoPopupContent(
+          e.code === 'Digit1'
+            ? { title: '조금만 뒤로 가볼까요?', message: 'TV와 너무 가까워요. 조금만 뒤로 가면 눈이 더 편안해요.' }
+            : { title: '잠깐 몸을 움직여 볼까요?', message: '같은 자세가 오래 이어졌어요. 어깨를 펴고 가볍게 스트레칭해요.' }
+        )
+        setDemoPopupExiting(false)
+        setDemoPopupVisible(true)
+
+        demoPopupTimerRef.current = window.setTimeout(() => {
+          demoPopupTimerRef.current = null
+          setDemoPopupExiting(true)
+          demoPopupExitTimerRef.current = window.setTimeout(() => {
+            demoPopupExitTimerRef.current = null
+            setDemoPopupVisible(false)
+            setDemoPopupExiting(false)
+          }, 400)
+        }, CARE_POPUP_DISPLAY_MS)
+        return
+      }
+
+      if (e.code === 'Digit2') {
+        if (demoBubbleTimerRef.current != null) window.clearTimeout(demoBubbleTimerRef.current)
+        if (demoBubbleExitTimerRef.current != null) window.clearTimeout(demoBubbleExitTimerRef.current)
+
+        setDemoBubbleExiting(false)
+        setDemoBubbleBubbles(spawnBubbles())
+        setDemoBubbleVisible(true)
+
+        demoBubbleTimerRef.current = window.setTimeout(() => {
+          demoBubbleTimerRef.current = null
+          setDemoBubbleExiting(true)
+          demoBubbleExitTimerRef.current = window.setTimeout(() => {
+            demoBubbleExitTimerRef.current = null
+            setDemoBubbleVisible(false)
+            setDemoBubbleExiting(false)
+            setDemoBubbleBubbles([])
+          }, 400)
+        }, CARE_POPUP_DISPLAY_MS)
+        return
+      }
+
+      if (e.code === 'KeyQ') {
+        dismissAll()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   useEffect(() => {
     if (!activeBackendChild?.childId || !activeMonitor?.active) {
@@ -1000,6 +1116,12 @@ export default function App() {
       const newProfileId = profileIdFromChildId(createdChild.childId)
       // loadIntegratedData가 백엔드 데이터로 프로필을 재구성할 때
       // 새 아이가 즉시 포함되지 않을 수 있으므로 upsert로 보장합니다
+      setChildren((prev) => {
+        const exists = prev.some((c) => c.childId === createdChild.childId)
+        if (exists) return prev
+        return [...prev, normalizeChildResponse(createdChild)]
+      })
+
       setProfiles((prev) => {
         const exists = prev.some((p) => p.id === newProfileId)
         const finalProfile: ChildProfile = {
@@ -1029,6 +1151,20 @@ export default function App() {
       throw error
     }
   }, [loadIntegratedData])
+
+  const handleDeleteProfile = useCallback(async (profileId: string) => {
+    const childId = childIdFromProfileId(profileId)
+    if (childId == null) return
+
+    await deleteChildProfile(childId)
+
+    setChildren(prev => prev.filter(c => c.childId !== childId))
+    setProfiles(prev => prev.filter(p => p.id !== profileId))
+    setActiveProfileId(prev => {
+      if (prev !== profileId) return prev
+      return profiles.find(p => p.id !== profileId)?.id ?? ''
+    })
+  }, [profiles])
 
   const handleAnalyzeYoutube = useCallback(async (videoId: string) => {
     if (!activeBackendChild?.childId) {
@@ -1438,6 +1574,73 @@ export default function App() {
         </div>
       )}
 
+      {/* 숫자키 2 데모 팝업 – blink_low (버블) */}
+      {demoBubbleVisible && (
+        <div className="blink-bubble-overlay blink-bubble-overlay--with-bubbles" aria-live="polite" aria-label="눈 깜박임 안내 데모">
+          {demoBubbleBubbles.length > 0 && (
+            <div className="blink-bubble-cluster">
+              {demoBubbleBubbles.map((bubble) => (
+                <span
+                  key={bubble.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="비눗방울 터뜨리기"
+                  className={`blink-bubble blink-bubble--${bubble.state}`}
+                  style={{
+                    ['--bubble-size' as string]: `${bubble.size}px`,
+                    ['--bubble-left' as string]: `${bubble.left}%`,
+                    ['--bubble-delay' as string]: `${bubble.delay}s`,
+                    ['--bubble-duration' as string]: `${bubble.duration}s`,
+                    ['--bubble-drift' as string]: `${bubble.drift}px`,
+                    ['--bubble-rise' as string]: `${bubble.rise}px`,
+                    cursor: 'pointer',
+                  } as CSSProperties}
+                  onClick={() => {
+                    if (bubble.state === 'popping') return
+                    setDemoBubbleBubbles((prev) => prev.map((b) => b.id === bubble.id ? { ...b, state: 'popping' as const } : b))
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      if (bubble.state === 'popping') return
+                      setDemoBubbleBubbles((prev) => prev.map((b) => b.id === bubble.id ? { ...b, state: 'popping' as const } : b))
+                    }
+                  }}
+                  onAnimationEnd={(e) => {
+                    if (e.animationName === 'bubble-pop') {
+                      setDemoBubbleBubbles((prev) => prev.filter((b) => b.id !== bubble.id))
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          <div className={`kids-care-popup${demoBubbleExiting ? ' kids-care-popup--exit' : ''}`}>
+            <div className="kids-care-popup__bear" aria-hidden="true">
+              <BearIcon size={88} />
+            </div>
+            <div className="kids-care-popup__bubble">
+              <strong>눈을 깜박여볼까요</strong>
+              <p>눈을 깜박이면 비눗방울이 사라져요.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 숫자키 1·3 데모 팝업 */}
+      {demoPopupVisible && (
+        <div className="blink-bubble-overlay" aria-live="polite" aria-label="케어 알림 데모">
+          <div className={`kids-care-popup${demoPopupExiting ? ' kids-care-popup--exit' : ''}`}>
+            <div className="kids-care-popup__bear" aria-hidden="true">
+              <BearIcon size={88} />
+            </div>
+            <div className="kids-care-popup__bubble">
+              <strong>{demoPopupContent.title}</strong>
+              <p>{demoPopupContent.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {currentScreen === 'main' && (
         <MainScreen
           onNavigate={navigate}
@@ -1461,6 +1664,7 @@ export default function App() {
           profiles={profiles}
           onSelectProfile={handleSelectKidsProfile}
           onNavigate={navigate}
+          onDeleteProfile={handleDeleteProfile}
         />
       )}
 
@@ -1543,6 +1747,7 @@ export default function App() {
       {currentScreen === 'kids-main' && (
         <KidsMainScreen
           onNavigate={navigate}
+          onRequestProtectedUrl={(url) => requestParentPin({ kind: 'open-url', url }, 'kids-main')}
           profiles={profiles}
           activeProfileId={activeProfileId}
           onSwitchProfile={(id) => {

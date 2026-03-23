@@ -28,7 +28,7 @@ export const AUTO_ADVANCE: Partial<Record<ScreenId, ScreenId>> = {
   login: 'connected',
   connected: 'content',
   'cam-connecting': 'cam-after',
-  done: 'kids-main',
+  done: 'profile-select',
 }
 
 export const AUTO_ADVANCE_DELAY_MS = 3000

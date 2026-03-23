@@ -144,7 +144,7 @@ def toggle_recording(
 
 # ── 녹음 삭제 ─────────────────────────────────────────────────────────────────
 
-@router.delete("/recordings/{speaker_id}/{alert_type}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/recordings/{speaker_id}/{alert_type}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_recording(
     speaker_id: str,
     alert_type: str,

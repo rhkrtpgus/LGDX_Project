@@ -385,7 +385,7 @@ export function YoutubeCareScreen({
             <div className="youtube-care-summary__card">
               <span>현재 자녀</span>
               <strong>{activeChild?.childName ?? '선택 필요'}</strong>
-              <p>일일 시청 제한 {formatMinutes(activeChild?.watchPolicy.dailyLimitMinutes)}</p>
+              <p>일일 시청 제한 {formatMinutes(activeChild?.watchPolicy?.dailyLimitMinutes)}</p>
             </div>
             <div className="youtube-care-summary__card">
               <span>허용 카테고리</span>
@@ -502,7 +502,8 @@ export function YoutubeCareScreen({
                 <iframe
                   title={selectedVideo?.title ?? '유튜브 재생기'}
                   src={playerEmbedUrl}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
                   allowFullScreen
                 />
               ) : (
@@ -679,8 +680,8 @@ function buildBlockedReasons(
 ) {
   const reasons: string[] = []
 
-  if (activeChild?.watchPolicy.autoBlockEnabled) {
-    const reachedDailyLimit = activeChild.todayWatchMinutes >= activeChild.watchPolicy.dailyLimitMinutes
+  if (activeChild?.watchPolicy?.autoBlockEnabled) {
+    const reachedDailyLimit = activeChild.todayWatchMinutes >= (activeChild.watchPolicy?.dailyLimitMinutes ?? 0)
     const bedtimeLocked = activeChild.watchPolicy.bedtimeLockEnabled && !activeChild.viewingAllowedNow
 
     if (!activeChild.viewingAllowedNow) {

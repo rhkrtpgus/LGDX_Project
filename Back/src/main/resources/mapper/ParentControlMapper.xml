@@ -101,6 +101,10 @@
     )
   </insert>
 
+  <delete id="deleteChild">
+    delete from children where child_id = #{childId}
+  </delete>
+
   <select id="findWatchPolicyByChildId" resultMap="watchPolicyResultMap">
     select
       child_id as child_id,

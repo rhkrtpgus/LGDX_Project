@@ -354,6 +354,15 @@ export function createChildProfile(payload: ChildCreateRequest) {
   })
 }
 
+export async function deleteChildProfile(childId: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/parent/children/${childId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response))
+  }
+}
+
 export function getViewingHistory(familyId: number, childId?: number, limit = 8) {
   const params = new URLSearchParams({
     familyId: String(familyId),

@@ -5,19 +5,24 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
+  const proxyConfig = {
+    '/api': {
+      target: env.VITE_JAVA_PROXY_TARGET || 'http://localhost:8082',
+      changeOrigin: true,
+    },
+    '/fastapi': {
+      target: env.VITE_FASTAPI_PROXY_TARGET || 'http://localhost:8000',
+      changeOrigin: true,
+    },
+  }
+
   return {
     plugins: [react()],
     server: {
-      proxy: {
-        '/api': {
-          target: env.VITE_JAVA_PROXY_TARGET || 'http://localhost:18082',
-          changeOrigin: true,
-        },
-        '/fastapi': {
-          target: env.VITE_FASTAPI_PROXY_TARGET || 'http://localhost:8000',
-          changeOrigin: true,
-        },
-      },
+      proxy: proxyConfig,
+    },
+    preview: {
+      proxy: proxyConfig,
     },
   }
 })

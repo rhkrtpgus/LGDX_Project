@@ -77,14 +77,13 @@ def search_youtube_videos(query: str, limit: int = 10) -> list[YoutubeVideoItem]
     if not normalized_query:
         return []
 
-    return _fetch_catalog_items(
-        {
-            "q": normalized_query,
-            "order": random.choice(YOUTUBE_ORDER_OPTIONS),
-            "safeSearch": "strict",
-        },
-        limit=limit,
-    )
+    extra: dict[str, str] = {
+        "q": normalized_query,
+        "order": random.choice(YOUTUBE_ORDER_OPTIONS),
+        "safeSearch": "strict",
+    }
+
+    return _fetch_catalog_items(extra, limit=limit)
 
 
 def fetch_related_youtube_videos(video_id: str, limit: int = 10) -> list[YoutubeVideoItem]:
