@@ -22,7 +22,7 @@ import type {
   SystemHealthResponse,
   YoutubeVideoCatalogItem,
 } from '../lib/api'
-import { getRelatedYoutubeVideos, searchYoutubeVideos } from '../lib/api'
+import { analyzeYoutube, getRelatedYoutubeVideos, searchYoutubeVideos } from '../lib/api'
 import { formatMinutes, getRiskTone, summarizeAlert, summarizeHistoryItem } from '../lib/integration'
 import { KidsContentCard } from './KidsContentCard'
 import { KidsLayout } from './KidsLayout'
@@ -165,6 +165,8 @@ type Props = {
   monitorLive: MonitorLiveResponse | null
   monitorPending: boolean
   onStopAddictionMonitor: () => Promise<void> | void
+  initialPlaybackVideoId?: string | null
+  onInitialPlaybackConsumed?: () => void
 }
 
 export function KidsMainScreen({
@@ -190,6 +192,8 @@ export function KidsMainScreen({
   monitorLive,
   monitorPending,
   onStopAddictionMonitor,
+  initialPlaybackVideoId,
+  onInitialPlaybackConsumed,
 }: Props) {
   const [activeCategory, setActiveCategory] = useState('home')
   const [panelOpen, setPanelOpen] = useState(false)
@@ -209,6 +213,9 @@ export function KidsMainScreen({
   const [youtubeRelatedPending, setYoutubeRelatedPending] = useState(false)
   const [youtubeRelatedError, setYoutubeRelatedError] = useState<string | null>(null)
   const [lastManualSearchQuery, setLastManualSearchQuery] = useState('')
+  // 추천 영상 사전 검열 결과 (videoId → AnalysisResponse)
+  const [catalogModeration, setCatalogModeration] = useState<Record<string, AnalysisResponse>>({})
+  const catalogPendingRef = useRef<Set<string>>(new Set())
   const playerSectionRef = useRef<HTMLDivElement | null>(null)
   const RECOMMENDATION_TARGET_COUNT = 24
 
@@ -324,6 +331,36 @@ export function KidsMainScreen({
 
     return diversifyYoutubeItems(mergedItems, RECOMMENDATION_TARGET_COUNT)
   }, [lastManualSearchQuery, localFallbackExamples, youtubeExamples, youtubeRelatedResults, youtubeSearchResults, RECOMMENDATION_TARGET_COUNT])
+
+  // 하나라도 차단 사유 있으면 true (Fail-Fast)
+  function isBlockedByModeration(analysis: AnalysisResponse): boolean {
+    if (analysis.harmful) return true
+    if (analysis.hasViolence) return true
+    if (analysis.hasNudity) return true
+    if (analysis.blockedByCategory) return true
+    if (!analysis.playback.allowed) return true
+    if (analysis.categoryNameKo && !isYoutubeCategoryAllowed(analysis.categoryNameKo, youtubeCategorySettings)) return true
+    return false
+  }
+
+  // 검열 완료된 차단 영상을 제거한 추천 목록
+  const filteredRecommendationItems = useMemo(() => {
+    return mergedRecommendationItems.filter((item) => {
+      const moderation = catalogModeration[item.videoId]
+      if (!moderation) return true // 아직 분석 전 → 일단 표시
+      return !isBlockedByModeration(moderation)
+    })
+    // isBlockedByModeration이 youtubeCategorySettings를 클로저로 사용하므로 deps 포함
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergedRecommendationItems, catalogModeration, youtubeCategorySettings])
+
+  const blockedRecommendationCount = useMemo(() => {
+    return mergedRecommendationItems.reduce((count, item) => {
+      const moderation = catalogModeration[item.videoId]
+      return count + (moderation && isBlockedByModeration(moderation) ? 1 : 0)
+    }, 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergedRecommendationItems, catalogModeration, youtubeCategorySettings])
   const derivedPlaybackItem = useMemo(() => {
     const sources = [
       ...youtubeExamples,
@@ -373,9 +410,17 @@ export function KidsMainScreen({
   }, [analysisHistory, playbackVideoId, youtubeSearchQuery])
 
   const selectedYoutubePick = quickPicks.find((pick) => pick.id === selectedYoutubeId) ?? quickPicks[0] ?? null
-  const blockedByUserCategory = latestAnalysis?.categoryNameKo
-    ? !isYoutubeCategoryAllowed(latestAnalysis.categoryNameKo, youtubeCategorySettings)
+
+  // 현재 재생 중인 영상의 분석 결과 (catalogModeration 우선, 없으면 latestAnalysis 사용)
+  const currentVideoAnalysis = catalogModeration[playbackVideoId]
+    ?? (latestAnalysis?.videoId === playbackVideoId ? latestAnalysis : null)
+
+  const blockedByUserCategory = currentVideoAnalysis?.categoryNameKo
+    ? !isYoutubeCategoryAllowed(currentVideoAnalysis.categoryNameKo, youtubeCategorySettings)
     : false
+
+  // 어떤 사유든 하나라도 차단 사유 있으면 iframe 제거
+  const currentVideoBlocked = currentVideoAnalysis !== null && isBlockedByModeration(currentVideoAnalysis)
   const recentReplayItems = useMemo(() => {
     const items = new Map<string, {
       key: string
@@ -443,7 +488,7 @@ export function KidsMainScreen({
     return Array.from(items.values()).slice(0, 8)
   }, [analysisHistory, latestAnalysis?.title, monitorLive?.active, monitorLive?.status, playbackItem, playbackVideoId, viewingHistory])
 
-  const canOpenAnalyzedVideo = Boolean(playbackVideoId.length > 0)
+  const canOpenAnalyzedVideo = Boolean(playbackVideoId.length > 0 && !currentVideoBlocked)
   const playerEmbedUrl = canOpenAnalyzedVideo
     ? `https://www.youtube.com/embed/${playbackVideoId}?autoplay=1&rel=0&modestbranding=1`
     : null
@@ -488,6 +533,44 @@ export function KidsMainScreen({
       description: recentAlerts[0] ? summarizeAlert(recentAlerts[0]) : '최근 알림 없이 안정적으로 보고 있어요.',
     },
   ]
+
+  // 시청 기록 화면에서 "아이들TV 재생" 클릭 시 해당 영상을 자동 로드
+  useEffect(() => {
+    if (!initialPlaybackVideoId) return
+    setPlaybackVideoId(initialPlaybackVideoId)
+    setSubmittedVideoId(initialPlaybackVideoId)
+    onInitialPlaybackConsumed?.()
+    // onInitialPlaybackConsumed 레퍼런스 변경에 반응할 필요 없으므로 deps에서 제외
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPlaybackVideoId])
+
+  // 추천 영상 로드 시 백그라운드 사전 분석 (Fail-Fast Pre-screening)
+  // 새 영상이 들어올 때마다 미분석 항목을 순차 분석, 차단 판정 즉시 filteredRecommendationItems에서 제거
+  useEffect(() => {
+    if (!activeChild?.childId) return
+    const childId = activeChild.childId
+
+    const MAX_PRESCREENING = 15
+    const candidates = mergedRecommendationItems
+      .slice(0, MAX_PRESCREENING)
+      .filter((item) => !catalogPendingRef.current.has(item.videoId) && !catalogModeration[item.videoId])
+
+    for (const item of candidates) {
+      catalogPendingRef.current.add(item.videoId)
+      void analyzeYoutube(item.videoId, childId, { saveResult: false, requestSource: 'kids-prescreening' })
+        .then((analysis) => {
+          setCatalogModeration((prev) => ({ ...prev, [item.videoId]: analysis }))
+        })
+        .catch(() => {
+          // 분석 실패 시 표시 유지 (차단하지 않음)
+        })
+        .finally(() => {
+          catalogPendingRef.current.delete(item.videoId)
+        })
+    }
+    // catalogModeration을 deps에서 제외 — 결과가 올 때마다 재실행하면 루프 발생
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergedRecommendationItems, activeChild?.childId])
 
   useEffect(() => {
     if (recommendationPages.length === 0) {
@@ -1058,11 +1141,18 @@ export function KidsMainScreen({
 
               <div className="kids-youtube-section-head">
                 <strong>추천 영상</strong>
-                <span>{recommendationHeadline}</span>
+                <span>
+                  {recommendationHeadline}
+                  {blockedRecommendationCount > 0 && (
+                    <span className="kids-rec-blocked-badge" title={`카테고리·유해 콘텐츠 필터로 ${blockedRecommendationCount}개 제거됨`}>
+                      {` · ${blockedRecommendationCount}개 필터됨`}
+                    </span>
+                  )}
+                </span>
               </div>
 
               <div className="kids-youtube-thumb-grid">
-                {mergedRecommendationItems.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).map((item) => (
+                {filteredRecommendationItems.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).map((item) => (
                   <button
                     key={`example-${item.videoId}`}
                     type="button"
@@ -1078,7 +1168,7 @@ export function KidsMainScreen({
                     </div>
                   </button>
                 ))}
-                {!youtubeSearchPending && mergedRecommendationItems.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).length === 0 && (
+                {!youtubeSearchPending && filteredRecommendationItems.filter((item) => !hiddenRecommendationVideoIds.has(item.videoId)).length === 0 && (
                   <div className="kids-youtube-empty">
                     {youtubeSearchResults.length > 0 ? '검색한 조건에 맞는 추천 영상을 아직 불러오지 못했어요.' : '추천 영상을 아직 불러오지 못했어요.'}
                   </div>

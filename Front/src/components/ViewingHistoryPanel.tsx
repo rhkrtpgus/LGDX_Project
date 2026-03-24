@@ -13,6 +13,7 @@ type ViewingHistoryPanelProps = {
   compact?: boolean
   selectedVideoId?: string | null
   onSelectVideo?: (videoId: string, title?: string | null) => void
+  onPlayInKidsMain?: (videoId: string) => void
 }
 
 export function ViewingHistoryPanel({
@@ -23,6 +24,7 @@ export function ViewingHistoryPanel({
   compact = false,
   selectedVideoId = null,
   onSelectVideo,
+  onPlayInKidsMain,
 }: ViewingHistoryPanelProps) {
   const totalWatchMinutes = Math.max(
     0,
@@ -104,6 +106,15 @@ export function ViewingHistoryPanel({
                         }}
                       >
                         {canPlayInside ? (selectedVideoId === linkedAnalysis.videoId ? '재생 중' : '재생하기') : '이어서 보기'}
+                      </button>
+                    ) : null}
+                    {linkedAnalysis?.videoId && onPlayInKidsMain ? (
+                      <button
+                        type="button"
+                        className="vhp-link-btn vhp-link-btn--kids"
+                        onClick={() => onPlayInKidsMain(linkedAnalysis.videoId!)}
+                      >
+                        아이들TV 재생
                       </button>
                     ) : null}
                     <span className="vhp-pill">{Math.max(1, Math.round((item.watchDuration ?? 0) / 60))}분</span>

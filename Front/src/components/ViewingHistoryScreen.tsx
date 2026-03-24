@@ -11,6 +11,7 @@ type ViewingHistoryScreenProps = {
   viewingHistory: ParentViewingHistoryResponse[]
   recentAlerts: ParentAlertResponse[]
   analysisHistory: AnalysisResponse[]
+  onPlayInKidsMain?: (videoId: string) => void
 }
 
 type PlaybackCandidate = {
@@ -23,6 +24,7 @@ export function ViewingHistoryScreen({
   viewingHistory,
   recentAlerts,
   analysisHistory,
+  onPlayInKidsMain,
 }: ViewingHistoryScreenProps) {
   const thinqMobileUrl = import.meta.env.VITE_THINQ_UI_URL ?? 'http://localhost:4174/'
   const playbackCandidates = useMemo<PlaybackCandidate[]>(() => {
@@ -113,6 +115,7 @@ export function ViewingHistoryScreen({
             setSelectedVideoId(videoId)
             setSelectedVideoTitle(title ?? `유튜브 영상 ${videoId}`)
           }}
+          onPlayInKidsMain={onPlayInKidsMain}
         />
       </div>
     </div>

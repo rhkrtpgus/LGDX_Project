@@ -399,6 +399,7 @@ export default function App() {
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisResponse[]>([])
   const [latestAnalysis, setLatestAnalysis] = useState<AnalysisResponse | null>(null)
   const [analysisPending, setAnalysisPending] = useState(false)
+  const [pendingKidsPlaybackVideoId, setPendingKidsPlaybackVideoId] = useState<string | null>(null)
   const [activeMonitor, setActiveMonitor] = useState<MonitorControlResponse | null>(null)
   const [monitorLive, setMonitorLive] = useState<MonitorLiveResponse | null>(null)
   const [monitorPending, setMonitorPending] = useState(false)
@@ -1166,6 +1167,13 @@ export default function App() {
     })
   }, [profiles])
 
+  const handlePlayInKidsMain = useCallback((videoId: string) => {
+    const existing = analysisHistory.find((a) => a.videoId === videoId) ?? null
+    if (existing) setLatestAnalysis(existing)
+    setPendingKidsPlaybackVideoId(videoId)
+    navigate('kids-main')
+  }, [analysisHistory, navigate])
+
   const handleAnalyzeYoutube = useCallback(async (videoId: string) => {
     if (!activeBackendChild?.childId) {
       setServerError('유튜브 확인을 시작하려면 자녀 프로필을 먼저 선택해 주세요.')
@@ -1709,6 +1717,7 @@ export default function App() {
           viewingHistory={viewingHistory}
           recentAlerts={recentAlerts}
           analysisHistory={analysisHistory}
+          onPlayInKidsMain={handlePlayInKidsMain}
         />
       )}
       {currentScreen === 'tv-live' && (
@@ -1772,6 +1781,8 @@ export default function App() {
           monitorLive={monitorLive}
           monitorPending={monitorPending}
           onStopAddictionMonitor={handleStopAddictionMonitor}
+          initialPlaybackVideoId={pendingKidsPlaybackVideoId}
+          onInitialPlaybackConsumed={() => setPendingKidsPlaybackVideoId(null)}
         />
       )}
 

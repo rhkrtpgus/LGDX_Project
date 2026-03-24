@@ -163,8 +163,8 @@ export function YoutubeCareScreen({
 
   const hasSelectedVideo = Boolean(selectedVideo)
   const canPlaySelectedVideo = Boolean(selectedVideo && selectedBlockedReasons.length === 0)
-  const playerEmbedUrl = selectedVideo
-    ? `https://www.youtube.com/embed/${selectedVideo.videoId}?autoplay=1&rel=0&modestbranding=1`
+  const playerEmbedUrl = canPlaySelectedVideo
+    ? `https://www.youtube.com/embed/${selectedVideo!.videoId}?autoplay=1&rel=0&modestbranding=1`
     : null
 
   const healthStatus = useMemo(() => {
